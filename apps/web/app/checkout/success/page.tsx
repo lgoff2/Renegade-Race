@@ -203,26 +203,6 @@ function CheckoutSuccessContent() {
                   </div>
                 </div>
 
-                {reservation.pickupTime && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-5 text-muted-foreground" />
-                      <span className="font-medium">Pickup Time</span>
-                    </div>
-                    <span>{reservation.pickupTime}</span>
-                  </div>
-                )}
-
-                {reservation.dropoffTime && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-5 text-muted-foreground" />
-                      <span className="font-medium">Dropoff Time</span>
-                    </div>
-                    <span>{reservation.dropoffTime}</span>
-                  </div>
-                )}
-
                 <Separator />
 
                 <div className="flex items-center justify-between">

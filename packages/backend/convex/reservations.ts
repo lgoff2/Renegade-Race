@@ -2,7 +2,13 @@ import { v } from "convex/values"
 import { internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { mutation, query } from "./_generated/server"
-import { calculateDaysBetween } from "./dateUtils"
+import {
+  endDateFromDuration,
+  inclusiveRentalDays,
+  isValidRentalDuration,
+  MAX_RENTAL_DURATION_DAYS,
+  MIN_RENTAL_DURATION_DAYS,
+} from "./dateUtils"
 import { calculateReservationTotal } from "./pricing"
 import {
   getReservationApprovedRenterEmailTemplate,
@@ -141,12 +147,39 @@ export const getById = query({
   },
 })
 
+// Active requests/bookings for a vehicle — informational, not a renter block.
+export const listActiveForVehicle = query({
+  args: { vehicleId: v.id("vehicles") },
+  handler: async (ctx, args) => {
+    const reservations = await ctx.db
+      .query("reservations")
+      .withIndex("by_vehicle", (q) => q.eq("vehicleId", args.vehicleId))
+      .filter((q) =>
+        q.or(
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "approved"),
+          q.eq(q.field("status"), "confirmed")
+        )
+      )
+      .collect()
+
+    return reservations.map((reservation) => ({
+      _id: reservation._id,
+      status: reservation.status,
+      startDate: reservation.startDate,
+      endDate: reservation.endDate,
+    }))
+  },
+})
+
 // Create a new reservation
 export const create = mutation({
   args: {
     vehicleId: v.id("vehicles"),
     startDate: v.string(),
-    endDate: v.string(),
+    // Inclusive last occupied day. Preferred: pass durationDays and omit this.
+    endDate: v.optional(v.string()),
+    durationDays: v.optional(v.number()),
     pickupTime: v.optional(v.string()),
     dropoffTime: v.optional(v.string()),
     renterMessage: v.optional(v.string()),
@@ -205,15 +238,38 @@ export const create = mutation({
       throwError(ErrorCode.USER_BLOCKED, "Cannot book vehicles from blocked users")
     }
 
-    // Calculate total days and amount
-    // Use date utility to avoid timezone issues
-    const totalDays = calculateDaysBetween(args.startDate, args.endDate)
+    // Rental length is start date + 1–3 occupied days (inclusive).
+    let totalDays: number
+    let endDate: string
 
-    if (totalDays <= 0) {
-      throwError(ErrorCode.INVALID_DATE_RANGE, "Invalid date range", {
-        startDate: args.startDate,
-        endDate: args.endDate,
-      })
+    if (args.durationDays !== undefined) {
+      if (!isValidRentalDuration(args.durationDays)) {
+        throwError(
+          ErrorCode.INVALID_DATE_RANGE,
+          `Rental length must be ${MIN_RENTAL_DURATION_DAYS}–${MAX_RENTAL_DURATION_DAYS} days`,
+          { durationDays: args.durationDays }
+        )
+      }
+      const computedEnd = endDateFromDuration(args.startDate, args.durationDays)
+      if (!computedEnd) {
+        throwError(ErrorCode.INVALID_DATE_RANGE, "Invalid start date", {
+          startDate: args.startDate,
+        })
+      }
+      totalDays = args.durationDays
+      endDate = computedEnd
+    } else if (args.endDate) {
+      totalDays = inclusiveRentalDays(args.startDate, args.endDate)
+      endDate = args.endDate
+      if (!isValidRentalDuration(totalDays)) {
+        throwError(
+          ErrorCode.INVALID_DATE_RANGE,
+          `Rental length must be ${MIN_RENTAL_DURATION_DAYS}–${MAX_RENTAL_DURATION_DAYS} days`,
+          { startDate: args.startDate, endDate: args.endDate, totalDays }
+        )
+      }
+    } else {
+      throwError(ErrorCode.INVALID_DATE_RANGE, "Start date and rental length are required")
     }
 
     // Monetary validation for daily rate
@@ -265,47 +321,9 @@ export const create = mutation({
       })
     }
 
-    // Check availability
-    const availability = await ctx.db
-      .query("availability")
-      .withIndex("by_vehicle_date", (q) => q.eq("vehicleId", args.vehicleId))
-      .filter((q) =>
-        q.and(q.gte(q.field("date"), args.startDate), q.lte(q.field("date"), args.endDate))
-      )
-      .collect()
-
-    const blockedDates = availability.filter((a) => !a.isAvailable)
-    if (blockedDates.length > 0) {
-      throwError(ErrorCode.DATES_UNAVAILABLE, "Selected dates are not available", {
-        blockedDates: blockedDates.map((d) => d.date),
-      })
-    }
-
-    // Check for conflicting confirmed reservations only
-    // Pending/approved requests do NOT block — only confirmed (paid) reservations block
-    const conflictingReservations = await ctx.db
-      .query("reservations")
-      .withIndex("by_vehicle", (q) => q.eq("vehicleId", args.vehicleId))
-      .filter((q) =>
-        q.and(
-          q.eq(q.field("status"), "confirmed"),
-          // Check for date overlap: existing reservation overlaps if
-          // existingStart <= newEnd AND existingEnd >= newStart
-          q.and(
-            q.lte(q.field("startDate"), args.endDate),
-            q.gte(q.field("endDate"), args.startDate)
-          )
-        )
-      )
-      .collect()
-
-    if (conflictingReservations.length > 0) {
-      throwError(ErrorCode.DATES_CONFLICT, "Selected dates conflict with existing reservations", {
-        startDate: args.startDate,
-        endDate: args.endDate,
-        conflictCount: conflictingReservations.length,
-      })
-    }
+    // Owner-blocked dates stay visible to hosts, but they do not prevent a
+    // renter from submitting a request. Existing bookings/requests also do not
+    // block — owners and admins choose which overlapping request to accept.
 
     // Create the reservation with sanitized content
     const reservationId = await ctx.db.insert("reservations", {
@@ -313,7 +331,7 @@ export const create = mutation({
       renterId,
       ownerId: vehicle.ownerId,
       startDate: args.startDate,
-      endDate: args.endDate,
+      endDate,
       pickupTime: args.pickupTime,
       dropoffTime: args.dropoffTime,
       totalDays,
@@ -376,7 +394,7 @@ export const create = mutation({
           renterName,
           vehicleName,
           startDate: args.startDate,
-          endDate: args.endDate,
+          endDate,
           totalAmount,
           renterMessage: args.renterMessage,
           reservationUrl: `${webUrl}/host/reservations`,

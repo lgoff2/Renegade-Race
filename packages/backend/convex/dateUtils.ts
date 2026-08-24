@@ -50,13 +50,62 @@ export function formatDateToISO(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+/** Track-day rentals last 1, 2, or 3 calendar days starting on the chosen date. */
+export const MIN_RENTAL_DURATION_DAYS = 1
+export const MAX_RENTAL_DURATION_DAYS = 3
+export const RENTAL_DURATION_OPTIONS = [1, 2, 3] as const
+export type RentalDurationDays = (typeof RENTAL_DURATION_OPTIONS)[number]
+
+const MS_PER_DAY = 1000 * 60 * 60 * 24
+
+/**
+ * Add (or subtract) calendar days from a YYYY-MM-DD date string.
+ */
+export function addCalendarDays(dateString: string, days: number): string | null {
+  const date = parseLocalDate(dateString)
+  if (!date) return null
+  date.setDate(date.getDate() + days)
+  return formatDateToISO(date)
+}
+
+/**
+ * Last occupied calendar day for a rental that starts on `startDateString`
+ * and lasts `durationDays` days (inclusive).
+ * Example: start 2024-06-15, duration 2 → 2024-06-16.
+ */
+export function endDateFromDuration(startDateString: string, durationDays: number): string | null {
+  if (!Number.isInteger(durationDays) || durationDays < 1) return null
+  return addCalendarDays(startDateString, durationDays - 1)
+}
+
+/**
+ * Inclusive occupied-day count for a rental (same day = 1, Jun 15–16 = 2).
+ * This is the track-day duration model, distinct from hotel-style night counts.
+ */
+export function inclusiveRentalDays(startDateString: string, endDateString: string): number {
+  const start = parseLocalDate(startDateString)
+  const end = parseLocalDate(endDateString)
+
+  if (!(start && end)) return 0
+
+  start.setHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
+
+  const diffDays = Math.round((end.getTime() - start.getTime()) / MS_PER_DAY)
+  return diffDays >= 0 ? diffDays + 1 : 0
+}
+
+export function isValidRentalDuration(days: number): days is RentalDurationDays {
+  return RENTAL_DURATION_OPTIONS.includes(days as RentalDurationDays)
+}
+
 /**
  * Calculate the number of days between two date strings.
  * Uses local date parsing to avoid timezone issues.
  *
  * @param startDateString - Start date in YYYY-MM-DD format
  * @param endDateString - End date in YYYY-MM-DD format
- * @returns Number of days (inclusive, so same day = 1)
+ * @returns Number of days (same day = 1; Jun 15–17 = 2, hotel-style night count)
  */
 export function calculateDaysBetween(startDateString: string, endDateString: string): number {
   const start = parseLocalDate(startDateString)
@@ -69,7 +118,7 @@ export function calculateDaysBetween(startDateString: string, endDateString: str
   end.setHours(0, 0, 0, 0)
 
   const diffTime = end.getTime() - start.getTime()
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  const diffDays = Math.ceil(diffTime / MS_PER_DAY)
 
   // If same day, return 1 (minimum rental is 1 day)
   // If diffDays is 0 or negative, return 0 (invalid range)

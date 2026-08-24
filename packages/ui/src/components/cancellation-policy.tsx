@@ -25,7 +25,7 @@ interface PolicyTier {
 const policyTiers: PolicyTier[] = [
   {
     name: "Full Refund",
-    timeframe: "7+ days before pickup",
+    timeframe: "7+ days before rental start",
     refundPercent: 100,
     icon: CheckCircle2,
     iconColor: "text-green-600",
@@ -33,7 +33,7 @@ const policyTiers: PolicyTier[] = [
   },
   {
     name: "Partial Refund",
-    timeframe: "2-7 days before pickup",
+    timeframe: "2-7 days before rental start",
     refundPercent: 50,
     icon: AlertCircle,
     iconColor: "text-amber-600",
@@ -59,8 +59,8 @@ export function CancellationPolicy({
       <div className={cn("flex items-center gap-2 text-muted-foreground text-sm", className)}>
         <Info className="size-4 shrink-0" />
         <span>
-          Free cancellation up to 7 days before pickup. 50% refund 2-7 days before. No refund within
-          48 hours.
+          Free cancellation up to 7 days before the rental starts. 50% refund 2-7 days before. No
+          refund within 48 hours.
         </span>
       </div>
     )
@@ -74,8 +74,8 @@ export function CancellationPolicy({
           <div>
             <h4 className="mb-1 font-medium">Cancellation Policy</h4>
             <p className="text-muted-foreground text-sm">
-              Full refund 7+ days before pickup. 50% refund 2-7 days before. No refund within 48
-              hours.
+              Full refund 7+ days before the rental starts. 50% refund 2-7 days before. No refund
+              within 48 hours.
             </p>
           </div>
         </div>

@@ -658,7 +658,7 @@ export default function HostVehicleAvailabilityPage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="size-4 rounded bg-blue-100 dark:bg-blue-900/20" />
-                <span className="font-medium text-sm">Reserved</span>
+                <span className="font-medium text-sm">Booked / requested</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="size-4 rounded border" />
@@ -678,7 +678,7 @@ export default function HostVehicleAvailabilityPage() {
                 <div className="mt-1 font-bold text-2xl">{blockedDates.length}</div>
               </div>
               <div className="rounded-lg border p-4">
-                <div className="text-muted-foreground text-sm">Reserved This Month</div>
+                <div className="text-muted-foreground text-sm">Booked / Requested This Month</div>
                 <div className="mt-1 font-bold text-2xl">{reservedDates.length}</div>
               </div>
               <div className="rounded-lg border p-4">

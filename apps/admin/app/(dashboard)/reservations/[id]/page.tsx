@@ -140,7 +140,7 @@ function BookingDetailsCard({ reservation }: { reservation: ReservationData }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-lg border p-4">
             <p className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-              Pickup
+              Rental start
             </p>
             <p className="mt-2 font-semibold">
               {format(new Date(reservation.startDate), "EEEE, MMMM d, yyyy")}
@@ -151,7 +151,7 @@ function BookingDetailsCard({ reservation }: { reservation: ReservationData }) {
           </div>
           <div className="rounded-lg border p-4">
             <p className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-              Dropoff
+              Last day
             </p>
             <p className="mt-2 font-semibold">
               {format(new Date(reservation.endDate), "EEEE, MMMM d, yyyy")}

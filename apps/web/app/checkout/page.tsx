@@ -6,25 +6,26 @@ import { Calendar } from "@workspace/ui/components/calendar"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Label } from "@workspace/ui/components/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@workspace/ui/components/popover"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@workspace/ui/components/select"
 import { Separator } from "@workspace/ui/components/separator"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@workspace/ui/components/toggle-group"
 import { cn } from "@workspace/ui/lib/utils"
 import { useMutation, useQuery } from "convex/react"
-import { Calendar as CalendarIcon, Check, ChevronDown, Clock, Loader2 } from "lucide-react"
+import { Calendar as CalendarIcon, Check, ChevronDown, Loader2 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import type { Id } from "@/lib/convex"
 import { api } from "@/lib/convex"
-import { formatDateToISO, parseLocalDate } from "@/lib/date-utils"
+import {
+  durationFromDateRange,
+  endDateFromDuration,
+  formatDateToISO,
+  parseLocalDate,
+  RENTAL_DURATION_OPTIONS,
+  type RentalDurationDays,
+} from "@/lib/date-utils"
 import { r2Url } from "@/lib/r2-url"
 
 interface AddOn {
@@ -55,12 +56,9 @@ function CheckoutPageContent() {
 
   const createReservation = useMutation(api.reservations.create)
 
-  const [pickupDate, setPickupDate] = useState<Date | undefined>(undefined)
-  const [pickupTime, setPickupTime] = useState("")
-  const [dropoffDate, setDropoffDate] = useState<Date | undefined>(undefined)
-  const [dropoffTime, setDropoffTime] = useState("")
-  const [openPickupDate, setOpenPickupDate] = useState(false)
-  const [openDropoffDate, setOpenDropoffDate] = useState(false)
+  const [startDate, setStartDate] = useState<Date | undefined>(undefined)
+  const [durationDays, setDurationDays] = useState<RentalDurationDays>(1)
+  const [openStartDate, setOpenStartDate] = useState(false)
   const [renterMessage, setRenterMessage] = useState("")
   const [selectedAddOns, setSelectedAddOns] = useState<AddOn[]>(() => {
     // Auto-select required add-ons if vehicle is loaded
@@ -68,6 +66,11 @@ function CheckoutPageContent() {
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const overlappingReservations = useQuery(
+    api.reservations.listActiveForVehicle,
+    vehicleId ? { vehicleId: vehicleId as Id<"vehicles"> } : "skip"
+  )
 
   // Update selected add-ons when vehicle loads
   useEffect(() => {
@@ -79,89 +82,71 @@ function CheckoutPageContent() {
     }
   }, [vehicle?.addOns])
 
-  // Initialize dates from URL params if provided
+  // Initialize start date + duration from URL params if provided
   useEffect(() => {
-    if (startDateParam && endDateParam && !pickupDate && !dropoffDate) {
-      const startDate = parseLocalDate(startDateParam)
-      const endDate = parseLocalDate(endDateParam)
+    if (startDateParam && !startDate) {
+      const parsedStart = parseLocalDate(startDateParam)
+      if (!parsedStart) return
 
-      if (startDate && endDate) {
-        // Set to midnight local time
-        startDate.setHours(0, 0, 0, 0)
-        endDate.setHours(0, 0, 0, 0)
+      parsedStart.setHours(0, 0, 0, 0)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (parsedStart < today) return
 
-        // Only set if dates are valid and in the future
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
+      setStartDate(parsedStart)
 
-        if (startDate >= today && endDate >= startDate) {
-          setPickupDate(startDate)
-          setDropoffDate(endDate)
+      if (endDateParam) {
+        const parsedEnd = parseLocalDate(endDateParam)
+        if (parsedEnd) {
+          parsedEnd.setHours(0, 0, 0, 0)
+          if (parsedEnd >= parsedStart) {
+            setDurationDays(durationFromDateRange(parsedStart, parsedEnd))
+          }
         }
       }
     }
-  }, [startDateParam, endDateParam, pickupDate, dropoffDate])
+  }, [startDateParam, endDateParam, startDate])
 
-  // Generate time options (every 30 minutes from 6 AM to 10 PM)
-  const generateTimeOptions = () => {
-    const times: string[] = []
-    for (let hour = 6; hour < 22; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
-        const time24 = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
-        times.push(time24)
-      }
-    }
-    return times
-  }
-
-  const timeOptions = generateTimeOptions()
-
-  const formatTimeForDisplay = (time24: string) => {
-    const [hours, minutes] = time24.split(":")
-    if (!(hours && minutes)) return time24
-    const hour = Number.parseInt(hours, 10)
-    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
-    const ampm = hour < 12 ? "AM" : "PM"
-    return `${hour12}:${minutes} ${ampm}`
-  }
-
-  // Calculate minimum dates
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const minPickupDate = today
-  const minDropoffDate = pickupDate || today
 
-  // Get blocked dates from availability (where isAvailable is false)
-  const blockedDates =
+  const endDate = startDate ? endDateFromDuration(startDate, durationDays) : undefined
+
+  const ownerBlockedDates =
     availability
       ?.filter((item: { isAvailable: boolean; date: string }) => !item.isAvailable)
       .map((item: { date: string }) => parseLocalDate(item.date))
       .filter((d: Date | null): d is Date => d !== null) || []
 
-  // Combine blocked dates (availability already accounts for reservations)
-  const unavailableDates = new Set(blockedDates.map((d: Date) => formatDateToISO(d)))
-
-  // Function to check if a date is unavailable
-  const isDateUnavailable = (date: Date): boolean => {
-    const dateStr = formatDateToISO(date)
-    return unavailableDates.has(dateStr)
-  }
-
-  // Function to check if a date range contains any unavailable dates
-  const isDateRangeUnavailable = (startDate: Date, endDate: Date): boolean => {
-    const start = new Date(startDate)
-    const end = new Date(endDate)
-    start.setHours(0, 0, 0, 0)
-    end.setHours(0, 0, 0, 0)
-
-    // Check each date in the range
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      if (isDateUnavailable(d)) {
-        return true
+  const requestedDates = useMemo(() => {
+    if (!overlappingReservations) return []
+    const dates: Date[] = []
+    for (const reservation of overlappingReservations) {
+      const rangeStart = parseLocalDate(reservation.startDate)
+      const rangeEnd = parseLocalDate(reservation.endDate)
+      if (!(rangeStart && rangeEnd)) continue
+      for (let d = new Date(rangeStart); d <= rangeEnd; d.setDate(d.getDate() + 1)) {
+        dates.push(new Date(d))
       }
     }
-    return false
-  }
+    return dates
+  }, [overlappingReservations])
+
+  const overlappingOnSelectedDates = useMemo(() => {
+    if (!(startDate && endDate && overlappingReservations)) return []
+    const startKey = formatDateToISO(startDate)
+    const endKey = formatDateToISO(endDate)
+    return overlappingReservations.filter(
+      (reservation) => reservation.startDate <= endKey && reservation.endDate >= startKey
+    )
+  }, [startDate, endDate, overlappingReservations])
+
+  const formatDateLabel = (date: Date) =>
+    date.toLocaleDateString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    })
 
   // Toggle add-on selection
   const toggleAddOn = (addOn: AddOn) => {
@@ -178,23 +163,17 @@ function CheckoutPageContent() {
 
   // Calculate total days and price
   const calculateTotal = () => {
-    if (!(pickupDate && dropoffDate && vehicle)) {
+    if (!(startDate && vehicle)) {
       return { days: 0, total: 0, addOnsTotal: 0 }
     }
 
-    const start = new Date(pickupDate)
-    const end = new Date(dropoffDate)
-    start.setHours(0, 0, 0, 0)
-    end.setHours(0, 0, 0, 0)
-    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-
-    if (days <= 0) return { days: 0, total: 0, addOnsTotal: 0 }
-
-    const baseTotal = days * vehicle.dailyRate
+    const rentalDays = durationDays
     const addOnsTotal = selectedAddOns.reduce((sum, addOn) => sum + addOn.price, 0)
-    const total = baseTotal + addOnsTotal
-
-    return { days, total, addOnsTotal }
+    return {
+      days: rentalDays,
+      total: rentalDays * vehicle.dailyRate + addOnsTotal,
+      addOnsTotal,
+    }
   }
 
   const { days, total } = calculateTotal()
@@ -205,14 +184,8 @@ function CheckoutPageContent() {
       return
     }
 
-    if (!(pickupDate && dropoffDate && pickupTime && dropoffTime && vehicle)) {
-      setError("Please fill in all required fields")
-      return
-    }
-
-    // Validate that the selected date range doesn't contain blocked dates
-    if (isDateRangeUnavailable(pickupDate, dropoffDate)) {
-      setError("The selected dates include unavailable dates. Please select different dates.")
+    if (!(startDate && vehicle)) {
+      setError("Please choose a rental start date")
       return
     }
 
@@ -220,7 +193,6 @@ function CheckoutPageContent() {
     setError(null)
 
     try {
-      // Prepare selected add-ons data (without isRequired field)
       const reservationAddOns =
         selectedAddOns.length > 0
           ? selectedAddOns.map((addOn) => ({
@@ -230,23 +202,14 @@ function CheckoutPageContent() {
             }))
           : undefined
 
-      // Convert Date objects to ISO date strings (YYYY-MM-DD) using local date formatting
-      // This prevents timezone shifts when converting dates
-      const startDateString = formatDateToISO(pickupDate)
-      const endDateString = formatDateToISO(dropoffDate)
-
-      // Create reservation request (no payment at this stage)
       const newReservationId = await createReservation({
         vehicleId: vehicle._id,
-        startDate: startDateString,
-        endDate: endDateString,
-        pickupTime,
-        dropoffTime,
+        startDate: formatDateToISO(startDate),
+        durationDays,
         renterMessage: renterMessage.trim() || undefined,
         addOns: reservationAddOns,
       })
 
-      // Redirect to request confirmation page
       router.push(`/checkout/request-sent?reservationId=${newReservationId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit request. Please try again.")
@@ -295,14 +258,7 @@ function CheckoutPageContent() {
   const primaryImageData = vehicleImages?.find((img) => img.isPrimary) || vehicleImages?.[0]
   const primaryImage =
     (primaryImageData?.r2Key ? r2Url(primaryImageData.r2Key) : primaryImageData?.imageUrl) || ""
-  // Check if form is valid and dates don't contain blocked dates
-  const isValid =
-    pickupDate &&
-    dropoffDate &&
-    pickupTime &&
-    dropoffTime &&
-    days > 0 &&
-    !isDateRangeUnavailable(pickupDate, dropoffDate)
+  const isValid = Boolean(startDate && days > 0)
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-8">
@@ -341,27 +297,20 @@ function CheckoutPageContent() {
 
               <Separator />
 
-              {/* Pickup Date and Time */}
               <div className="space-y-4">
                 <div>
-                  <Label className="mb-2 flex items-center gap-2" htmlFor="pickup-date">
+                  <Label className="mb-2 flex items-center gap-2" htmlFor="rental-start-date">
                     <CalendarIcon className="size-4" />
-                    Pickup Date
+                    Rental start date
                   </Label>
-                  <Popover onOpenChange={setOpenPickupDate} open={openPickupDate}>
+                  <Popover onOpenChange={setOpenStartDate} open={openStartDate}>
                     <PopoverTrigger asChild>
                       <Button
                         className="h-11 w-full justify-between px-3 py-2 font-normal"
-                        id="pickup-date"
+                        id="rental-start-date"
                         variant="outline"
                       >
-                        {pickupDate
-                          ? pickupDate.toLocaleDateString("en-US", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            })
-                          : "Select date"}
+                        {startDate ? formatDateLabel(startDate) : "Select start date"}
                         <ChevronDown className="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </PopoverTrigger>
@@ -370,157 +319,91 @@ function CheckoutPageContent() {
                         disabled={(date: Date) => {
                           const dateStart = new Date(date)
                           dateStart.setHours(0, 0, 0, 0)
-                          return dateStart < minPickupDate || isDateUnavailable(dateStart)
+                          return dateStart < today
                         }}
                         initialFocus
                         mode="single"
                         modifiers={{
-                          blocked: blockedDates,
+                          blocked: ownerBlockedDates,
+                          requested: requestedDates,
                         }}
                         modifiersClassNames={{
                           blocked: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
+                          requested:
+                            "bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400",
                         }}
                         onSelect={(date) => {
                           if (date) {
-                            if (isDateUnavailable(date)) {
-                              setError("This date is unavailable. Please select a different date.")
-                              return
-                            }
-                            setPickupDate(date)
+                            setStartDate(date)
                             setError(null)
-                            // Reset dropoff date if it's before new pickup date or if it's unavailable
-                            if (dropoffDate && date && dropoffDate < date) {
-                              setDropoffDate(undefined)
-                            } else if (dropoffDate && isDateRangeUnavailable(date, dropoffDate)) {
-                              setError(
-                                "The selected date range includes unavailable dates. Please select different dates."
-                              )
-                              setDropoffDate(undefined)
-                            }
-                            setOpenPickupDate(false)
+                            setOpenStartDate(false)
                           }
                         }}
-                        selected={pickupDate}
+                        selected={startDate}
                       />
                     </PopoverContent>
                   </Popover>
-                  {blockedDates.length > 0 && (
-                    <div className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
-                      <div className="size-3 rounded bg-red-100 dark:bg-red-900/20" />
-                      <span>Unavailable dates</span>
-                    </div>
-                  )}
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-muted-foreground text-xs">
+                    {ownerBlockedDates.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <div className="size-3 rounded bg-red-100 dark:bg-red-900/20" />
+                        <span>Owner marked unavailable</span>
+                      </div>
+                    )}
+                    {requestedDates.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <div className="size-3 rounded bg-amber-100 dark:bg-amber-900/20" />
+                        <span>Other requests or bookings</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <Label className="mb-2 flex items-center gap-2" htmlFor="pickup-time">
-                    <Clock className="size-4" />
-                    Pickup Time
-                  </Label>
-                  <Select onValueChange={setPickupTime} required value={pickupTime}>
-                    <SelectTrigger id="pickup-time">
-                      <SelectValue placeholder="Select pickup time" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timeOptions.map((time) => (
-                        <SelectItem key={time} value={time}>
-                          {formatTimeForDisplay(time)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
 
-              <Separator />
+                <div>
+                  <Label className="mb-2">Number of days</Label>
+                  <ToggleGroup
+                    className="grid w-full grid-cols-3"
+                    onValueChange={(value) => {
+                      const next = Number(value)
+                      if (RENTAL_DURATION_OPTIONS.includes(next as RentalDurationDays)) {
+                        setDurationDays(next as RentalDurationDays)
+                      }
+                    }}
+                    size="lg"
+                    value={String(durationDays)}
+                  >
+                    {RENTAL_DURATION_OPTIONS.map((option) => (
+                      <ToggleGroupItem className="w-full" key={option} value={String(option)}>
+                        {option} {option === 1 ? "day" : "days"}
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                  <p className="mt-2 text-muted-foreground text-sm">
+                    The car stays at the track. Choose how many days you want, starting on the date
+                    above.
+                  </p>
+                </div>
 
-              {/* Dropoff Date and Time */}
-              <div className="space-y-4">
-                <div>
-                  <Label className="mb-2 flex items-center gap-2" htmlFor="dropoff-date">
-                    <CalendarIcon className="size-4" />
-                    Dropoff Date
-                  </Label>
-                  <Popover onOpenChange={setOpenDropoffDate} open={openDropoffDate}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        className="h-11 w-full justify-between px-3 py-2 font-normal"
-                        id="dropoff-date"
-                        variant="outline"
-                      >
-                        {dropoffDate
-                          ? dropoffDate.toLocaleDateString("en-US", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            })
-                          : "Select date"}
-                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-auto p-0">
-                      <Calendar
-                        disabled={(date: Date) => {
-                          const dateStart = new Date(date)
-                          dateStart.setHours(0, 0, 0, 0)
-                          const minDate = new Date(minDropoffDate)
-                          minDate.setHours(0, 0, 0, 0)
-                          return dateStart < minDate || isDateUnavailable(dateStart)
-                        }}
-                        initialFocus
-                        mode="single"
-                        modifiers={{
-                          blocked: blockedDates,
-                        }}
-                        modifiersClassNames={{
-                          blocked: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400",
-                        }}
-                        onSelect={(date) => {
-                          if (date) {
-                            if (isDateUnavailable(date)) {
-                              setError("This date is unavailable. Please select a different date.")
-                              return
-                            }
-                            // Validate that the date range from pickup to dropoff doesn't contain blocked dates
-                            if (pickupDate && isDateRangeUnavailable(pickupDate, date)) {
-                              setError(
-                                "The selected date range includes unavailable dates. Please select different dates."
-                              )
-                              return
-                            }
-                            setDropoffDate(date)
-                            setError(null)
-                            setOpenDropoffDate(false)
-                          }
-                        }}
-                        selected={dropoffDate}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {blockedDates.length > 0 && (
-                    <div className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
-                      <div className="size-3 rounded bg-red-100 dark:bg-red-900/20" />
-                      <span>Unavailable dates</span>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <Label className="mb-2 flex items-center gap-2" htmlFor="dropoff-time">
-                    <Clock className="size-4" />
-                    Dropoff Time
-                  </Label>
-                  <Select onValueChange={setDropoffTime} required value={dropoffTime}>
-                    <SelectTrigger id="dropoff-time">
-                      <SelectValue placeholder="Select dropoff time" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timeOptions.map((time) => (
-                        <SelectItem key={time} value={time}>
-                          {formatTimeForDisplay(time)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {startDate && endDate && (
+                  <div className="rounded-lg border bg-muted/50 p-3 text-sm">
+                    <p className="font-medium">
+                      Starts {formatDateLabel(startDate)} · {durationDays}{" "}
+                      {durationDays === 1 ? "day" : "days"}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      {durationDays === 1
+                        ? `Rental day: ${formatDateLabel(startDate)}`
+                        : `Rental days: ${formatDateLabel(startDate)} – ${formatDateLabel(endDate)}`}
+                    </p>
+                  </div>
+                )}
+
+                {overlappingOnSelectedDates.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900 text-sm dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    Other requests or bookings exist on some of these days. You can still submit —
+                    the owner or admin will decide which request to accept.
+                  </div>
+                )}
               </div>
 
               {/* Add-ons Selection */}
@@ -613,14 +496,18 @@ function CheckoutPageContent() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                {days > 0 && (
+                {days > 0 && startDate && (
                   <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Rental start</span>
+                      <span>{formatDateLabel(startDate)}</span>
+                    </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Daily Rate</span>
                       <span>${vehicle.dailyRate.toLocaleString()}/day</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Duration</span>
+                      <span className="text-muted-foreground">Rental length</span>
                       <span>
                         {days} {days === 1 ? "day" : "days"}
                       </span>

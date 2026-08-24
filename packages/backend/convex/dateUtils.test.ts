@@ -3,6 +3,10 @@ import {
   formatDateToISO,
   calculateDaysBetween,
   generateDateRange,
+  addCalendarDays,
+  endDateFromDuration,
+  inclusiveRentalDays,
+  isValidRentalDuration,
 } from "./dateUtils"
 
 describe("parseLocalDate", () => {
@@ -121,5 +125,34 @@ describe("generateDateRange", () => {
   it("generates range across month boundary", () => {
     const range = generateDateRange("2024-01-30", "2024-02-02")
     expect(range).toEqual(["2024-01-30", "2024-01-31", "2024-02-01", "2024-02-02"])
+  })
+})
+
+describe("inclusive rental duration", () => {
+  it("treats the same start and end as 1 day", () => {
+    expect(inclusiveRentalDays("2024-06-15", "2024-06-15")).toBe(1)
+  })
+
+  it("counts occupied calendar days inclusively", () => {
+    expect(inclusiveRentalDays("2024-06-15", "2024-06-16")).toBe(2)
+    expect(inclusiveRentalDays("2024-06-15", "2024-06-17")).toBe(3)
+  })
+
+  it("computes the last occupied day from start + duration", () => {
+    expect(endDateFromDuration("2024-06-15", 1)).toBe("2024-06-15")
+    expect(endDateFromDuration("2024-06-15", 2)).toBe("2024-06-16")
+    expect(endDateFromDuration("2024-06-15", 3)).toBe("2024-06-17")
+  })
+
+  it("adds calendar days across a month boundary", () => {
+    expect(addCalendarDays("2024-01-31", 1)).toBe("2024-02-01")
+  })
+
+  it("accepts only 1, 2, or 3 day rentals", () => {
+    expect(isValidRentalDuration(1)).toBe(true)
+    expect(isValidRentalDuration(2)).toBe(true)
+    expect(isValidRentalDuration(3)).toBe(true)
+    expect(isValidRentalDuration(0)).toBe(false)
+    expect(isValidRentalDuration(4)).toBe(false)
   })
 })

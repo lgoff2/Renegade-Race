@@ -4,7 +4,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent } from "@workspace/ui/components/card"
 import { Separator } from "@workspace/ui/components/separator"
 import { useQuery } from "convex/react"
-import { Calendar, Clock, MapPin, Send } from "lucide-react"
+import { Calendar, MapPin, Send } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
@@ -120,26 +120,6 @@ function RequestSentContent() {
                     </p>
                   </div>
                 </div>
-
-                {reservation.pickupTime && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-5 text-muted-foreground" />
-                      <span className="font-medium">Pickup Time</span>
-                    </div>
-                    <span>{reservation.pickupTime}</span>
-                  </div>
-                )}
-
-                {reservation.dropoffTime && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-5 text-muted-foreground" />
-                      <span className="font-medium">Dropoff Time</span>
-                    </div>
-                    <span>{reservation.dropoffTime}</span>
-                  </div>
-                )}
 
                 <Separator />
 

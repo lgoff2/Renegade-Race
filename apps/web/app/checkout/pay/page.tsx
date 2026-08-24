@@ -7,7 +7,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Separator } from "@workspace/ui/components/separator"
 import { useAction, useQuery } from "convex/react"
-import { Calendar, Clock, Loader2, MapPin } from "lucide-react"
+import { Calendar, Loader2, MapPin } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -236,15 +236,6 @@ function PayPageContent() {
   const primaryImage =
     (primaryImageData?.r2Key ? r2Url(primaryImageData.r2Key) : primaryImageData?.imageUrl) || ""
 
-  const formatTimeForDisplay = (time24: string) => {
-    const [hours, minutes] = time24.split(":")
-    if (!(hours && minutes)) return time24
-    const hour = Number.parseInt(hours, 10)
-    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
-    const ampm = hour < 12 ? "AM" : "PM"
-    return `${hour12}:${minutes} ${ampm}`
-  }
-
   const options: StripeElementsOptions | null = clientSecret
     ? {
         clientSecret,
@@ -322,26 +313,6 @@ function PayPageContent() {
                     </p>
                   </div>
                 </div>
-
-                {reservation.pickupTime && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-4 text-muted-foreground" />
-                      <span className="text-sm">Pickup</span>
-                    </div>
-                    <span className="text-sm">{formatTimeForDisplay(reservation.pickupTime)}</span>
-                  </div>
-                )}
-
-                {reservation.dropoffTime && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-4 text-muted-foreground" />
-                      <span className="text-sm">Dropoff</span>
-                    </div>
-                    <span className="text-sm">{formatTimeForDisplay(reservation.dropoffTime)}</span>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -409,26 +380,6 @@ function PayPageContent() {
                   </span>
                 </div>
               </div>
-
-              {reservation.pickupTime && (
-                <div className="rounded-lg border bg-muted/50 p-4">
-                  <h4 className="mb-2 font-semibold text-sm">Pickup Details</h4>
-                  <p className="text-muted-foreground text-sm">
-                    {formatDateForDisplay(reservation.startDate)} at{" "}
-                    {formatTimeForDisplay(reservation.pickupTime)}
-                  </p>
-                </div>
-              )}
-
-              {reservation.dropoffTime && (
-                <div className="rounded-lg border bg-muted/50 p-4">
-                  <h4 className="mb-2 font-semibold text-sm">Dropoff Details</h4>
-                  <p className="text-muted-foreground text-sm">
-                    {formatDateForDisplay(reservation.endDate)} at{" "}
-                    {formatTimeForDisplay(reservation.dropoffTime)}
-                  </p>
-                </div>
-              )}
             </CardContent>
           </Card>
         </div>
