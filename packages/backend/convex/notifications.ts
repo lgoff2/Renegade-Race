@@ -27,7 +27,14 @@ export const createNotification = internalMutation({
       v.literal("coaching_approved"),
       v.literal("coaching_declined"),
       v.literal("coaching_cancelled"),
-      v.literal("coaching_completed")
+      v.literal("coaching_completed"),
+      v.literal("seat_request_pending"),
+      v.literal("seat_approved"),
+      v.literal("seat_declined"),
+      v.literal("seat_cancelled"),
+      v.literal("seat_waitlisted"),
+      v.literal("seat_spot_available"),
+      v.literal("seat_completed")
     ),
     title: v.string(),
     message: v.string(),
@@ -52,7 +59,14 @@ export const createNotification = internalMutation({
         args.type === "reservation_approved" ||
         args.type === "reservation_declined" ||
         args.type === "reservation_cancelled" ||
-        args.type === "reservation_completed"
+        args.type === "reservation_completed" ||
+        args.type === "seat_request_pending" ||
+        args.type === "seat_approved" ||
+        args.type === "seat_declined" ||
+        args.type === "seat_cancelled" ||
+        args.type === "seat_waitlisted" ||
+        args.type === "seat_spot_available" ||
+        args.type === "seat_completed"
       ) {
         shouldNotify = prefs.reservationUpdates
       } else if (args.type === "new_message") {

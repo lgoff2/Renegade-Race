@@ -12,7 +12,12 @@ export const create = internalMutation({
       v.literal("damage_invoice"),
       v.literal("coach_profile"),
       v.literal("coaching_booking"),
-      v.literal("coaching_review")
+      v.literal("coaching_review"),
+      v.literal("race_series"),
+      v.literal("race_event"),
+      v.literal("team_car"),
+      v.literal("seat_offering"),
+      v.literal("seat_booking")
     ),
     entityId: v.optional(v.string()),
     action: v.string(),
