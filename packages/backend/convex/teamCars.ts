@@ -7,8 +7,10 @@ import { sanitizeMessage, sanitizeShortText } from "./sanitize"
 import {
   assertOfferingPrices,
   assertSpotCount,
+  omitHostUserId,
   requireIdentity,
   requireTeamManager,
+  toPublicTeamListing,
 } from "./seatHelpers"
 
 const experienceLevelValidator = v.union(
@@ -268,7 +270,11 @@ async function enrichTeamCar(ctx: any, teamCar: any) {
     ctx.db.get(teamCar.teamId),
     ctx.db.get(teamCar.raceEventId),
   ])
-  return { ...teamCar, team, event }
+  return {
+    ...omitHostUserId(teamCar),
+    team: toPublicTeamListing(team),
+    event,
+  }
 }
 
 export const getById = query({

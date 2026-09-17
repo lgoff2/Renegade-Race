@@ -9,8 +9,10 @@ import {
   assertSpotCount,
   countHeldSpots,
   getOfferingInventory,
+  omitHostUserId,
   requireIdentity,
   requireTeamManager,
+  toPublicTeamListing,
 } from "./seatHelpers"
 
 const experienceLevelValidator = v.union(
@@ -185,7 +187,13 @@ async function enrichOffering(ctx: any, offering: any) {
     ctx.db.get(offering.raceEventId),
     getOfferingInventory(ctx, offering),
   ])
-  return { ...offering, teamCar, team, event, inventory }
+  return {
+    ...omitHostUserId(offering),
+    teamCar: teamCar ? omitHostUserId(teamCar) : null,
+    team: toPublicTeamListing(team),
+    event,
+    inventory,
+  }
 }
 
 export const getById = query({

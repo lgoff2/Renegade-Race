@@ -345,7 +345,7 @@ describe("seat bookings — request / waitlist / approve", () => {
     expect(promoted?.status).toBe("pending")
   })
 
-  it("opens a seat conversation on request", async () => {
+  it("does not open a conversation or expose host contact on request", async () => {
     const t = convexTest(schema, modules)
     const teamId = await seedTeam(t)
     const { eventId } = await seedCatalog(t, teamId)
@@ -357,14 +357,23 @@ describe("seat bookings — request / waitlist / approve", () => {
       driverMessage: "Need a co-driver for Sebring",
     })
 
-    const conversation = await t.run(async (ctx) =>
-      ctx.db
-        .query("conversations")
-        .withIndex("by_seat_booking", (q) => q.eq("seatBookingId", bookingId))
-        .first()
-    )
-    expect(conversation?.conversationType).toBe("seat")
-    expect(conversation?.renterId).toBe(DRIVER_A)
-    expect(conversation?.ownerId).toBe(OWNER)
+    const conversations = await t.run(async (ctx) => ctx.db.query("conversations").collect())
+    expect(conversations).toHaveLength(0)
+
+    const asDriver = t.withIdentity({ subject: DRIVER_A })
+    const booking = await asDriver.query(api.seatBookings.getById, { bookingId })
+    expect(booking).toBeTruthy()
+    expect((booking as { hostUserId?: string } | null)?.hostUserId).toBeUndefined()
+    expect((booking as { host?: unknown } | null)?.host).toBeUndefined()
+    expect(
+      (booking as { team?: { contactInfo?: unknown } } | null)?.team?.contactInfo
+    ).toBeUndefined()
+
+    const offering = await t.query(api.seatOfferings.getById, { offeringId })
+    expect((offering as { hostUserId?: string } | null)?.hostUserId).toBeUndefined()
+    expect(
+      (offering as { team?: { contactInfo?: unknown; ownerId?: string } } | null)?.team?.contactInfo
+    ).toBeUndefined()
+    expect((offering as { team?: { ownerId?: string } } | null)?.team?.ownerId).toBeUndefined()
   })
 })

@@ -256,3 +256,24 @@ export async function promoteOldestWaitlisted(
 
   return next._id
 }
+
+/** Public listing identity for a team on seat surfaces — no contact or owner profile. */
+export function toPublicTeamListing(team: Doc<"teams"> | null) {
+  if (!team) return null
+  return {
+    _id: team._id,
+    name: team.name,
+    location: team.location,
+    logoUrl: team.logoUrl,
+    logoR2Key: team.logoR2Key,
+    specialties: team.specialties,
+    racingType: team.racingType,
+    isActive: team.isActive,
+  }
+}
+
+/** Drop Stripe host id so clients cannot build a Message Host / profile link. */
+export function omitHostUserId<T extends { hostUserId?: string }>(doc: T) {
+  const { hostUserId: _hostUserId, ...rest } = doc
+  return rest
+}

@@ -303,20 +303,13 @@ export default defineSchema({
     renterId: v.string(),
     ownerId: v.string(),
     conversationType: v.optional(
-      v.union(
-        v.literal("rental"),
-        v.literal("team"),
-        v.literal("driver"),
-        v.literal("coaching"),
-        v.literal("seat")
-      )
+      v.union(v.literal("rental"), v.literal("team"), v.literal("driver"), v.literal("coaching"))
     ),
     teamId: v.optional(v.id("teams")),
     driverProfileId: v.optional(v.id("driverProfiles")),
     coachProfileId: v.optional(v.id("coachProfiles")),
     reservationId: v.optional(v.id("reservations")),
     coachingBookingId: v.optional(v.id("coachingBookings")),
-    seatBookingId: v.optional(v.id("seatBookings")),
     lastMessageAt: v.number(),
     lastMessageText: v.optional(v.string()),
     lastMessageSenderId: v.optional(v.string()),
@@ -338,8 +331,7 @@ export default defineSchema({
     .index("by_participants", ["renterId", "ownerId"])
     .index("by_last_message", ["lastMessageAt"])
     .index("by_reservation", ["reservationId"])
-    .index("by_coaching_booking", ["coachingBookingId"])
-    .index("by_seat_booking", ["seatBookingId"]),
+    .index("by_coaching_booking", ["coachingBookingId"]),
 
   messages: defineTable({
     conversationId: v.id("conversations"),
@@ -1199,6 +1191,7 @@ export default defineSchema({
 
   // Endurance seat rentals: RaceSeries → RaceEvent → TeamCar → SeatOffering → SeatBooking.
   // Parallel to coaching (not vehicles/reservations). Stripe IDs live on seatBookings.
+  // Request-to-book only — no seat conversations / Message Host cut-out in v1.
   raceSeries: defineTable({
     name: v.string(),
     description: v.optional(v.string()),

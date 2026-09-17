@@ -12,9 +12,11 @@ import {
   holdsSeat,
   isAdminIdentity,
   isTeamManager,
+  omitHostUserId,
   promoteOldestWaitlisted,
   requireIdentity,
   requireTeamManager,
+  toPublicTeamListing,
 } from "./seatHelpers"
 
 const bookingStatusValidator = v.union(
@@ -67,47 +69,6 @@ async function auditStatusChange(
     previousState: { status: args.previousStatus },
     newState: { status: args.newStatus },
   })
-}
-
-async function createSeatConversation(
-  ctx: any,
-  args: {
-    bookingId: any
-    teamId: any
-    driverId: string
-    hostUserId: string
-    driverMessage?: string
-    now: number
-  }
-) {
-  const conversationId = await ctx.db.insert("conversations", {
-    conversationType: "seat",
-    teamId: args.teamId,
-    seatBookingId: args.bookingId,
-    renterId: args.driverId,
-    ownerId: args.hostUserId,
-    lastMessageAt: args.now,
-    lastMessageText: args.driverMessage,
-    lastMessageSenderId: args.driverMessage ? args.driverId : undefined,
-    unreadCountRenter: 0,
-    unreadCountOwner: args.driverMessage ? 1 : 0,
-    isActive: !!args.driverMessage,
-    createdAt: args.now,
-    updatedAt: args.now,
-  })
-
-  if (args.driverMessage) {
-    await ctx.db.insert("messages", {
-      conversationId,
-      senderId: args.driverId,
-      content: args.driverMessage,
-      messageType: "text",
-      isRead: false,
-      createdAt: args.now,
-    })
-  }
-
-  return conversationId
 }
 
 export const request = mutation({
@@ -200,15 +161,6 @@ export const request = mutation({
       waitlistedAt: waitlisted ? now : undefined,
       createdAt: now,
       updatedAt: now,
-    })
-
-    await createSeatConversation(ctx, {
-      bookingId,
-      teamId: offering.teamId,
-      driverId,
-      hostUserId: offering.hostUserId,
-      driverMessage,
-      now,
     })
 
     if (waitlisted) {
@@ -611,8 +563,8 @@ export const expireApprovedUnpaidBookings = internalMutation({
   },
 })
 
-async function enrichBooking(ctx: any, booking: any) {
-  const [offering, teamCar, event, team, driver, host] = await Promise.all([
+async function enrichBooking(ctx: any, booking: any, viewer: "driver" | "team" | "admin") {
+  const [offering, teamCar, event, team, driver] = await Promise.all([
     ctx.db.get(booking.seatOfferingId),
     ctx.db.get(booking.teamCarId),
     ctx.db.get(booking.raceEventId),
@@ -621,12 +573,31 @@ async function enrichBooking(ctx: any, booking: any) {
       .query("users")
       .withIndex("by_external_id", (q: any) => q.eq("externalId", booking.driverId))
       .first(),
-    ctx.db
-      .query("users")
-      .withIndex("by_external_id", (q: any) => q.eq("externalId", booking.hostUserId))
-      .first(),
   ])
-  return { ...booking, offering, teamCar, event, team, driver, host }
+
+  const teamListing = toPublicTeamListing(team)
+  const offeringPublic = offering ? omitHostUserId(offering) : null
+  const teamCarPublic = teamCar ? omitHostUserId(teamCar) : null
+
+  if (viewer === "driver") {
+    const { hostUserId: _hostUserId, ...bookingPublic } = booking
+    return {
+      ...bookingPublic,
+      offering: offeringPublic,
+      teamCar: teamCarPublic,
+      event,
+      team: teamListing,
+    }
+  }
+
+  return {
+    ...booking,
+    offering: offeringPublic,
+    teamCar: teamCarPublic,
+    event,
+    team: teamListing,
+    driver,
+  }
 }
 
 async function assertCanViewBooking(ctx: any, booking: any, userId: string, identity: any) {
@@ -636,6 +607,12 @@ async function assertCanViewBooking(ctx: any, booking: any, userId: string, iden
   throwError(ErrorCode.FORBIDDEN, "Not authorized to view this booking")
 }
 
+async function viewerForBooking(ctx: any, booking: any, identity: { subject: string }) {
+  if (isAdminIdentity(identity)) return "admin" as const
+  if (await isTeamManager(ctx, booking.teamId, identity.subject)) return "team" as const
+  return "driver" as const
+}
+
 export const getById = query({
   args: { bookingId: v.id("seatBookings") },
   handler: async (ctx, args) => {
@@ -643,7 +620,8 @@ export const getById = query({
     const booking = await ctx.db.get(args.bookingId)
     if (!booking) return null
     await assertCanViewBooking(ctx, booking, identity.subject, identity)
-    return await enrichBooking(ctx, booking)
+    const viewer = await viewerForBooking(ctx, booking, identity)
+    return await enrichBooking(ctx, booking, viewer)
   },
 })
 
@@ -661,7 +639,7 @@ export const getByDriver = query({
       q = q.filter((f) => f.eq(f.field("status"), status))
     }
     const bookings = await q.order("desc").collect()
-    return await Promise.all(bookings.map((booking) => enrichBooking(ctx, booking)))
+    return await Promise.all(bookings.map((booking) => enrichBooking(ctx, booking, "driver")))
   },
 })
 
@@ -678,7 +656,7 @@ export const getPendingForTeam = query({
       (booking) => booking.status === "pending" || booking.status === "waitlisted"
     )
     pending.sort((a, b) => b.createdAt - a.createdAt)
-    return await Promise.all(pending.map((booking) => enrichBooking(ctx, booking)))
+    return await Promise.all(pending.map((booking) => enrichBooking(ctx, booking, "team")))
   },
 })
 
@@ -698,7 +676,7 @@ export const getByTeam = query({
       ? bookings.filter((booking) => booking.status === args.status)
       : bookings
     filtered.sort((a, b) => b.createdAt - a.createdAt)
-    return await Promise.all(filtered.map((booking) => enrichBooking(ctx, booking)))
+    return await Promise.all(filtered.map((booking) => enrichBooking(ctx, booking, "team")))
   },
 })
 
@@ -718,7 +696,7 @@ export const getWaitlistForOffering = query({
       )
       .collect()
     waitlisted.sort((a, b) => a.createdAt - b.createdAt)
-    return await Promise.all(waitlisted.map((booking) => enrichBooking(ctx, booking)))
+    return await Promise.all(waitlisted.map((booking) => enrichBooking(ctx, booking, "team")))
   },
 })
 
@@ -736,7 +714,7 @@ export const getByOffering = query({
       .withIndex("by_offering", (q) => q.eq("seatOfferingId", args.offeringId))
       .collect()
     bookings.sort((a, b) => b.createdAt - a.createdAt)
-    return await Promise.all(bookings.map((booking) => enrichBooking(ctx, booking)))
+    return await Promise.all(bookings.map((booking) => enrichBooking(ctx, booking, "team")))
   },
 })
 
@@ -756,6 +734,6 @@ export const getForAdmin = query({
           .order("desc")
           .take(limit)
       : await ctx.db.query("seatBookings").order("desc").take(limit)
-    return await Promise.all(bookings.map((booking) => enrichBooking(ctx, booking)))
+    return await Promise.all(bookings.map((booking) => enrichBooking(ctx, booking, "admin")))
   },
 })
