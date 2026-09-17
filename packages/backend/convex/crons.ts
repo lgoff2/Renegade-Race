@@ -19,6 +19,13 @@ crons.interval(
   internal.coachingBookings.expireApprovedUnpaidBookings
 )
 
+// Expire approved seat bookings whose deposit wasn't paid within 48 hours
+crons.interval(
+  "expire approved unpaid seat bookings",
+  { hours: 1 },
+  internal.seatBookings.expireApprovedUnpaidBookings
+)
+
 // Clean up old webhook events every 24 hours
 // Removes webhook events older than 7 days to prevent table bloat
 // Webhook idempotency only needs to track recent events

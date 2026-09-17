@@ -107,6 +107,24 @@ export const getByUser = query({
           }
         }
 
+        let seatBooking: {
+          _id: string
+          status: string
+          priceCents: number
+          depositCents: number
+        } | null = null
+        if (conversation.seatBookingId) {
+          const seat = (await ctx.db.get(conversation.seatBookingId)) as any
+          if (seat) {
+            seatBooking = {
+              _id: String(seat._id),
+              status: seat.status,
+              priceCents: seat.priceCents,
+              depositCents: seat.depositCents,
+            }
+          }
+        }
+
         return {
           ...conversation,
           vehicle,
@@ -117,6 +135,7 @@ export const getByUser = query({
           driverProfile,
           coachProfile,
           reservation,
+          seatBooking,
         }
       })
     )
@@ -229,6 +248,24 @@ export const getById = query({
       }
     }
 
+    let seatBooking: {
+      _id: string
+      status: string
+      priceCents: number
+      depositCents: number
+    } | null = null
+    if (conversation.seatBookingId) {
+      const seat = (await ctx.db.get(conversation.seatBookingId)) as any
+      if (seat) {
+        seatBooking = {
+          _id: String(seat._id),
+          status: seat.status,
+          priceCents: seat.priceCents,
+          depositCents: seat.depositCents,
+        }
+      }
+    }
+
     return {
       ...conversation,
       vehicle,
@@ -239,6 +276,7 @@ export const getById = query({
       driverProfile,
       coachProfile,
       reservation,
+      seatBooking,
     }
   },
 })
