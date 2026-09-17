@@ -15,6 +15,8 @@ const modules = (
   }
 ).glob("./**/*.ts")
 
+import { SEAT_REQUEST_INTRO } from "./seatHelpers"
+
 const OWNER = "team_owner_1"
 const DRIVER_A = "driver_a"
 const DRIVER_B = "driver_b"
@@ -22,8 +24,40 @@ const DRIVER_C = "driver_c"
 const STRANGER = "stranger_1"
 const ADMIN = "admin_1"
 
+const REQUEST_FIELDS = {
+  availableStartDate: "2031-03-14",
+  availableEndDate: "2031-03-16",
+  driverExperience: "intermediate" as const,
+  budgetBand: "$10k–$20k",
+  seriesClass: "GT4",
+  whyBuying: "Looking for a Sebring co-drive",
+}
+
+function requestArgs(
+  offeringId: Id<"seatOfferings">,
+  extra: Partial<typeof REQUEST_FIELDS> & { note?: string } = {}
+) {
+  return { offeringId, ...REQUEST_FIELDS, ...extra }
+}
+
 function adminIdentity() {
   return { subject: ADMIN, publicMetadata: { role: "admin" }, orgRole: "admin" }
+}
+
+async function seedUser(
+  t: ReturnType<typeof convexTest>,
+  externalId: string,
+  name: string,
+  contact?: { email?: string; phone?: string }
+) {
+  return await t.run(async (ctx) =>
+    ctx.db.insert("users", {
+      externalId,
+      name,
+      email: contact?.email,
+      phone: contact?.phone,
+    })
+  )
 }
 
 async function seedTeam(t: ReturnType<typeof convexTest>, ownerId = OWNER) {
@@ -36,7 +70,10 @@ async function seedTeam(t: ReturnType<typeof convexTest>, ownerId = OWNER) {
       specialties: ["Endurance"],
       availableSeats: 4,
       requirements: [],
-      contactInfo: {},
+      contactInfo: {
+        phone: "555-0199",
+        email: "team@secret.example",
+      },
       isActive: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -151,8 +188,8 @@ describe("team cars and seat offerings", () => {
 
     const asA = t.withIdentity({ subject: DRIVER_A })
     const asB = t.withIdentity({ subject: DRIVER_B })
-    await asA.mutation(api.seatBookings.request, { offeringId })
-    await asB.mutation(api.seatBookings.request, { offeringId })
+    await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
+    await asB.mutation(api.seatBookings.request, requestArgs(offeringId))
 
     const asOwner = t.withIdentity({ subject: OWNER })
     await expect(
@@ -169,15 +206,17 @@ describe("seat bookings — request / waitlist / approve", () => {
     const { offeringId } = await seedOffering(t, teamId, eventId, 1)
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    const first = await asA.mutation(api.seatBookings.request, {
-      offeringId,
-      driverMessage: "I have a NASA TT4 license",
-    })
+    const first = await asA.mutation(
+      api.seatBookings.request,
+      requestArgs(offeringId, { note: "I have a NASA TT4 license" })
+    )
     expect(first.status).toBe("pending")
+    expect(first.conversationId).toBeTruthy()
 
     const asB = t.withIdentity({ subject: DRIVER_B })
-    const second = await asB.mutation(api.seatBookings.request, { offeringId })
+    const second = await asB.mutation(api.seatBookings.request, requestArgs(offeringId))
     expect(second.status).toBe("waitlisted")
+    expect(second.conversationId).toBeTruthy()
 
     await t.finishInProgressScheduledFunctions()
 
@@ -199,7 +238,9 @@ describe("seat bookings — request / waitlist / approve", () => {
     const { offeringId } = await seedOffering(t, teamId, eventId, 1)
 
     const asOwner = t.withIdentity({ subject: OWNER })
-    await expect(asOwner.mutation(api.seatBookings.request, { offeringId })).rejects.toThrow()
+    await expect(
+      asOwner.mutation(api.seatBookings.request, requestArgs(offeringId))
+    ).rejects.toThrow()
   })
 
   it("rejects a duplicate open request from the same driver", async () => {
@@ -209,8 +250,8 @@ describe("seat bookings — request / waitlist / approve", () => {
     const { offeringId } = await seedOffering(t, teamId, eventId, 2)
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    await asA.mutation(api.seatBookings.request, { offeringId })
-    await expect(asA.mutation(api.seatBookings.request, { offeringId })).rejects.toThrow()
+    await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
+    await expect(asA.mutation(api.seatBookings.request, requestArgs(offeringId))).rejects.toThrow()
   })
 
   it("requires team approval before a deposit can confirm the seat", async () => {
@@ -220,7 +261,7 @@ describe("seat bookings — request / waitlist / approve", () => {
     const { offeringId } = await seedOffering(t, teamId, eventId, 1)
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    const { bookingId } = await asA.mutation(api.seatBookings.request, { offeringId })
+    const { bookingId } = await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
 
     await expect(t.mutation(internal.seatBookings.markDepositPaid, { bookingId })).rejects.toThrow(
       "INVALID_STATUS"
@@ -250,11 +291,11 @@ describe("seat bookings — request / waitlist / approve", () => {
     const { offeringId } = await seedOffering(t, teamId, eventId, 1)
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    const first = await asA.mutation(api.seatBookings.request, { offeringId })
+    const first = await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
     const asB = t.withIdentity({ subject: DRIVER_B })
-    const second = await asB.mutation(api.seatBookings.request, { offeringId })
+    const second = await asB.mutation(api.seatBookings.request, requestArgs(offeringId))
     const asC = t.withIdentity({ subject: DRIVER_C })
-    const third = await asC.mutation(api.seatBookings.request, { offeringId })
+    const third = await asC.mutation(api.seatBookings.request, requestArgs(offeringId))
 
     expect(second.status).toBe("waitlisted")
     expect(third.status).toBe("waitlisted")
@@ -284,7 +325,7 @@ describe("seat bookings — request / waitlist / approve", () => {
     const { offeringId } = await seedOffering(t, teamId, eventId, 1)
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    const { bookingId } = await asA.mutation(api.seatBookings.request, { offeringId })
+    const { bookingId } = await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
 
     await expect(asA.mutation(api.seatBookings.approve, { bookingId })).rejects.toThrow()
   })
@@ -308,7 +349,7 @@ describe("seat bookings — request / waitlist / approve", () => {
     })
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    const { bookingId } = await asA.mutation(api.seatBookings.request, { offeringId })
+    const { bookingId } = await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
     await asOwner.mutation(api.seatBookings.approve, { bookingId })
     await t.mutation(internal.seatBookings.markDepositPaid, { bookingId })
 
@@ -324,9 +365,9 @@ describe("seat bookings — request / waitlist / approve", () => {
     const { offeringId } = await seedOffering(t, teamId, eventId, 1)
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    const first = await asA.mutation(api.seatBookings.request, { offeringId })
+    const first = await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
     const asB = t.withIdentity({ subject: DRIVER_B })
-    const second = await asB.mutation(api.seatBookings.request, { offeringId })
+    const second = await asB.mutation(api.seatBookings.request, requestArgs(offeringId))
 
     const asOwner = t.withIdentity({ subject: OWNER })
     await asOwner.mutation(api.seatBookings.approve, { bookingId: first.bookingId })
@@ -345,35 +386,102 @@ describe("seat bookings — request / waitlist / approve", () => {
     expect(promoted?.status).toBe("pending")
   })
 
-  it("does not open a conversation or expose host contact on request", async () => {
+  it("opens an in-app seat conversation immediately and keeps contact off public listings", async () => {
     const t = convexTest(schema, modules)
     const teamId = await seedTeam(t)
+    await seedUser(t, OWNER, "Alex Host", {
+      email: "alex@secret.example",
+      phone: "555-0100",
+    })
     const { eventId } = await seedCatalog(t, teamId)
     const { offeringId } = await seedOffering(t, teamId, eventId, 1)
 
     const asA = t.withIdentity({ subject: DRIVER_A })
-    const { bookingId } = await asA.mutation(api.seatBookings.request, {
-      offeringId,
-      driverMessage: "Need a co-driver for Sebring",
-    })
+    const { bookingId, conversationId, status } = await asA.mutation(
+      api.seatBookings.request,
+      requestArgs(offeringId, { note: "Need a co-driver for Sebring" })
+    )
+    expect(status).toBe("pending")
+    expect(conversationId).toBeTruthy()
 
-    const conversations = await t.run(async (ctx) => ctx.db.query("conversations").collect())
-    expect(conversations).toHaveLength(0)
+    const conversation = await t.run(async (ctx) => ctx.db.get(conversationId))
+    expect(conversation?.conversationType).toBe("seat")
+    expect(conversation?.seatBookingId).toBe(bookingId)
+    expect(conversation?.isActive).toBe(true)
+    expect(conversation?.renterId).toBe(DRIVER_A)
+    expect(conversation?.ownerId).toBe(OWNER)
+    expect(conversation?.lastMessageText).toContain(SEAT_REQUEST_INTRO)
+    expect(conversation?.lastMessageText).toContain("GT4")
+    expect(conversation?.lastMessageText).toContain("Need a co-driver for Sebring")
 
-    const asDriver = t.withIdentity({ subject: DRIVER_A })
-    const booking = await asDriver.query(api.seatBookings.getById, { bookingId })
+    const messages = await t.run(async (ctx) => ctx.db.query("messages").collect())
+    expect(messages).toHaveLength(1)
+    expect(messages[0]?.conversationId).toBe(conversationId)
+
+    const booking = await asA.query(api.seatBookings.getById, { bookingId })
     expect(booking).toBeTruthy()
+    expect((booking as { conversationId?: string } | null)?.conversationId).toBe(conversationId)
     expect((booking as { hostUserId?: string } | null)?.hostUserId).toBeUndefined()
-    expect((booking as { host?: unknown } | null)?.host).toBeUndefined()
+    expect(
+      (booking as { host?: { name?: string; email?: string; phone?: string } } | null)?.host?.name
+    ).toBe("Alex Host")
+    expect((booking as { host?: { email?: string } } | null)?.host?.email).toBeUndefined()
+    expect((booking as { host?: { phone?: string } } | null)?.host?.phone).toBeUndefined()
+    expect((booking as { team?: { name?: string } } | null)?.team?.name).toBe("Gridlock Racing")
     expect(
       (booking as { team?: { contactInfo?: unknown } } | null)?.team?.contactInfo
     ).toBeUndefined()
 
+    const thread = await asA.query(api.conversations.getById, {
+      conversationId,
+      userId: DRIVER_A,
+    })
+    expect(thread.seatBooking?._id).toBe(String(bookingId))
+    expect(thread.team?.name).toBe("Gridlock Racing")
+    expect(
+      (thread.team as { contactInfo?: unknown } | null | undefined)?.contactInfo
+    ).toBeUndefined()
+    expect((thread.owner as { email?: string } | null | undefined)?.email).toBeUndefined()
+    expect((thread.owner as { phone?: string } | null | undefined)?.phone).toBeUndefined()
+    expect((thread.owner as { name?: string } | null | undefined)?.name).toBe("Alex Host")
+
     const offering = await t.query(api.seatOfferings.getById, { offeringId })
     expect((offering as { hostUserId?: string } | null)?.hostUserId).toBeUndefined()
+    expect((offering as { host?: unknown } | null)?.host).toBeUndefined()
     expect(
       (offering as { team?: { contactInfo?: unknown; ownerId?: string } } | null)?.team?.contactInfo
     ).toBeUndefined()
     expect((offering as { team?: { ownerId?: string } } | null)?.team?.ownerId).toBeUndefined()
+    expect((offering as { team?: { name?: string } } | null)?.team?.name).toBe("Gridlock Racing")
+  })
+
+  it("requires structured request fields and dates that overlap the event", async () => {
+    const t = convexTest(schema, modules)
+    const teamId = await seedTeam(t)
+    const { eventId } = await seedCatalog(t, teamId)
+    const { offeringId } = await seedOffering(t, teamId, eventId, 1)
+    const asA = t.withIdentity({ subject: DRIVER_A })
+
+    await expect(
+      asA.mutation(api.seatBookings.request, requestArgs(offeringId, { whyBuying: "   " }))
+    ).rejects.toThrow("INVALID_INPUT")
+
+    await expect(
+      asA.mutation(api.seatBookings.request, requestArgs(offeringId, { budgetBand: "   " }))
+    ).rejects.toThrow("INVALID_INPUT")
+
+    await expect(
+      asA.mutation(api.seatBookings.request, requestArgs(offeringId, { seriesClass: "   " }))
+    ).rejects.toThrow("INVALID_INPUT")
+
+    await expect(
+      asA.mutation(
+        api.seatBookings.request,
+        requestArgs(offeringId, {
+          availableStartDate: "2030-01-01",
+          availableEndDate: "2030-01-02",
+        })
+      )
+    ).rejects.toThrow("INVALID_DATE_RANGE")
   })
 })

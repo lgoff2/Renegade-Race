@@ -272,8 +272,51 @@ export function toPublicTeamListing(team: Doc<"teams"> | null) {
   }
 }
 
-/** Drop Stripe host id so clients cannot build a Message Host / profile link. */
+/** Drop Stripe host id from public catalog payloads. */
 export function omitHostUserId<T extends { hostUserId?: string }>(doc: T) {
   const { hostUserId: _hostUserId, ...rest } = doc
   return rest
+}
+
+/** Name-only host identity for booking/chat after a request exists. */
+export function toHostDisplay(user: Doc<"users"> | null) {
+  if (!user) return null
+  return {
+    name: user.name,
+    profileImage: user.profileImage,
+    profileImageR2Key: user.profileImageR2Key,
+  }
+}
+
+/** Drop email/phone from a user payload — seat chat stays in-platform. */
+export function omitUserContact<T extends { email?: string; phone?: string }>(user: T | null) {
+  if (!user) return null
+  const { email: _email, phone: _phone, ...rest } = user
+  return rest
+}
+
+export const SEAT_REQUEST_INTRO = "Send a rental request to chat with the team/owner."
+
+export function formatSeatRequestMessage(fields: {
+  availableStartDate: string
+  availableEndDate: string
+  driverExperience: string
+  budgetBand: string
+  seriesClass: string
+  whyBuying: string
+  note?: string
+}) {
+  const lines = [
+    SEAT_REQUEST_INTRO,
+    "",
+    `Dates: ${fields.availableStartDate} – ${fields.availableEndDate}`,
+    `Experience: ${fields.driverExperience}`,
+    `Budget: ${fields.budgetBand}`,
+    `Series/class: ${fields.seriesClass}`,
+    `Why I'm buying: ${fields.whyBuying}`,
+  ]
+  if (fields.note) {
+    lines.push(`Note: ${fields.note}`)
+  }
+  return lines.join("\n")
 }

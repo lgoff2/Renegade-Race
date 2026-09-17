@@ -6,7 +6,9 @@ import { ErrorCode, throwError } from "./errors"
 import { rateLimiter } from "./rateLimiter"
 import { sanitizeMessage, sanitizeShortText } from "./sanitize"
 import {
+  assertEventDateRange,
   findOpenBookingForDriver,
+  formatSeatRequestMessage,
   getActivePlatformFeePercentage,
   getOfferingInventory,
   holdsSeat,
@@ -16,6 +18,7 @@ import {
   promoteOldestWaitlisted,
   requireIdentity,
   requireTeamManager,
+  toHostDisplay,
   toPublicTeamListing,
 } from "./seatHelpers"
 
@@ -29,6 +32,13 @@ const bookingStatusValidator = v.union(
   v.literal("declined"),
   v.literal("expired"),
   v.literal("completed")
+)
+
+const driverExperienceValidator = v.union(
+  v.literal("beginner"),
+  v.literal("intermediate"),
+  v.literal("advanced"),
+  v.literal("professional")
 )
 
 async function notify(
@@ -71,10 +81,55 @@ async function auditStatusChange(
   })
 }
 
+async function createSeatConversation(
+  ctx: MutationCtx,
+  args: {
+    bookingId: any
+    teamId: any
+    driverId: string
+    hostUserId: string
+    content: string
+    now: number
+  }
+) {
+  const conversationId = await ctx.db.insert("conversations", {
+    conversationType: "seat",
+    teamId: args.teamId,
+    seatBookingId: args.bookingId,
+    renterId: args.driverId,
+    ownerId: args.hostUserId,
+    lastMessageAt: args.now,
+    lastMessageText: args.content,
+    lastMessageSenderId: args.driverId,
+    unreadCountRenter: 0,
+    unreadCountOwner: 1,
+    isActive: true,
+    createdAt: args.now,
+    updatedAt: args.now,
+  })
+
+  await ctx.db.insert("messages", {
+    conversationId,
+    senderId: args.driverId,
+    content: args.content,
+    messageType: "text",
+    isRead: false,
+    createdAt: args.now,
+  })
+
+  return conversationId
+}
+
 export const request = mutation({
   args: {
     offeringId: v.id("seatOfferings"),
-    driverMessage: v.optional(v.string()),
+    availableStartDate: v.string(),
+    availableEndDate: v.string(),
+    driverExperience: driverExperienceValidator,
+    budgetBand: v.string(),
+    seriesClass: v.string(),
+    whyBuying: v.string(),
+    note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await requireIdentity(ctx)
@@ -139,11 +194,37 @@ export const request = mutation({
       throwError(ErrorCode.ALREADY_EXISTS, "You already have an open request for this seat")
     }
 
+    const whyBuying = sanitizeMessage(args.whyBuying)
+    if (!whyBuying) {
+      throwError(ErrorCode.INVALID_INPUT, "Tell the team why you want this seat")
+    }
+    const budgetBand = sanitizeShortText(args.budgetBand)
+    if (!budgetBand) {
+      throwError(ErrorCode.INVALID_INPUT, "Budget band is required")
+    }
+    const seriesClass = sanitizeShortText(args.seriesClass)
+    if (!seriesClass) {
+      throwError(ErrorCode.INVALID_INPUT, "Series/class is required")
+    }
+    assertEventDateRange(args.availableStartDate, args.availableEndDate)
+    if (args.availableEndDate < event.startDate || args.availableStartDate > event.endDate) {
+      throwError(ErrorCode.INVALID_DATE_RANGE, "Available dates must overlap the race event")
+    }
+
     const inventory = await getOfferingInventory(ctx, offering)
     const waitlisted = inventory.remaining <= 0
     const now = Date.now()
-    const driverMessage = args.driverMessage ? sanitizeMessage(args.driverMessage) : undefined
+    const note = args.note ? sanitizeMessage(args.note) : undefined
     const platformFeePercentage = await getActivePlatformFeePercentage(ctx)
+    const requestMessage = formatSeatRequestMessage({
+      availableStartDate: args.availableStartDate,
+      availableEndDate: args.availableEndDate,
+      driverExperience: args.driverExperience,
+      budgetBand,
+      seriesClass,
+      whyBuying,
+      note,
+    })
 
     const bookingId = await ctx.db.insert("seatBookings", {
       seatOfferingId: offering._id,
@@ -157,10 +238,25 @@ export const request = mutation({
       depositCents: offering.depositCents,
       balanceCents: offering.priceCents - offering.depositCents,
       platformFeePercentage,
-      driverMessage,
+      availableStartDate: args.availableStartDate,
+      availableEndDate: args.availableEndDate,
+      driverExperience: args.driverExperience,
+      budgetBand,
+      seriesClass,
+      whyBuying,
+      driverMessage: note,
       waitlistedAt: waitlisted ? now : undefined,
       createdAt: now,
       updatedAt: now,
+    })
+
+    const conversationId = await createSeatConversation(ctx, {
+      bookingId,
+      teamId: offering.teamId,
+      driverId,
+      hostUserId: offering.hostUserId,
+      content: requestMessage,
+      now,
     })
 
     if (waitlisted) {
@@ -169,16 +265,17 @@ export const request = mutation({
         type: "seat_waitlisted",
         title: "You're on the waitlist",
         message:
-          "This seat offering is full. We'll notify you if a spot opens; the team still has to approve before payment.",
-        link: "/trips",
+          "This seat offering is full. Chat with the team is open; we'll notify you if a spot opens and they still need to approve before payment.",
+        link: `/messages/${conversationId}`,
         metadata: { bookingId, offeringId: offering._id },
       })
       await notify(ctx, {
         userId: offering.hostUserId,
         type: "seat_request_pending",
         title: "New seat waitlist request",
-        message: "A driver joined the waitlist for a full seat offering.",
-        link: "/motorsports/profile/team",
+        message:
+          "A driver sent a rental request to chat about a full seat offering. Review it in your dashboard.",
+        link: `/messages/${conversationId}`,
         metadata: { bookingId, offeringId: offering._id },
       })
     } else {
@@ -186,8 +283,9 @@ export const request = mutation({
         userId: offering.hostUserId,
         type: "seat_request_pending",
         title: "New race seat request",
-        message: "A driver requested a seat on your team car. Approve or decline the request.",
-        link: "/motorsports/profile/team",
+        message:
+          "A driver sent a rental request to chat with your team. Approve or decline in your dashboard.",
+        link: `/messages/${conversationId}`,
         metadata: { bookingId, offeringId: offering._id },
       })
     }
@@ -199,7 +297,7 @@ export const request = mutation({
       newStatus: waitlisted ? "waitlisted" : "pending",
     })
 
-    return { bookingId, status: waitlisted ? "waitlisted" : "pending" }
+    return { bookingId, conversationId, status: waitlisted ? "waitlisted" : "pending" }
   },
 })
 
@@ -564,7 +662,7 @@ export const expireApprovedUnpaidBookings = internalMutation({
 })
 
 async function enrichBooking(ctx: any, booking: any, viewer: "driver" | "team" | "admin") {
-  const [offering, teamCar, event, team, driver] = await Promise.all([
+  const [offering, teamCar, event, team, driver, host, conversation] = await Promise.all([
     ctx.db.get(booking.seatOfferingId),
     ctx.db.get(booking.teamCarId),
     ctx.db.get(booking.raceEventId),
@@ -573,29 +671,39 @@ async function enrichBooking(ctx: any, booking: any, viewer: "driver" | "team" |
       .query("users")
       .withIndex("by_external_id", (q: any) => q.eq("externalId", booking.driverId))
       .first(),
+    ctx.db
+      .query("users")
+      .withIndex("by_external_id", (q: any) => q.eq("externalId", booking.hostUserId))
+      .first(),
+    ctx.db
+      .query("conversations")
+      .withIndex("by_seat_booking", (q: any) => q.eq("seatBookingId", booking._id))
+      .first(),
   ])
 
   const teamListing = toPublicTeamListing(team)
   const offeringPublic = offering ? omitHostUserId(offering) : null
   const teamCarPublic = teamCar ? omitHostUserId(teamCar) : null
+  const shared = {
+    offering: offeringPublic,
+    teamCar: teamCarPublic,
+    event,
+    team: teamListing,
+    host: toHostDisplay(host),
+    conversationId: conversation?._id ?? null,
+  }
 
   if (viewer === "driver") {
     const { hostUserId: _hostUserId, ...bookingPublic } = booking
     return {
       ...bookingPublic,
-      offering: offeringPublic,
-      teamCar: teamCarPublic,
-      event,
-      team: teamListing,
+      ...shared,
     }
   }
 
   return {
     ...booking,
-    offering: offeringPublic,
-    teamCar: teamCarPublic,
-    event,
-    team: teamListing,
+    ...shared,
     driver,
   }
 }
