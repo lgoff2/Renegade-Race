@@ -13,7 +13,7 @@ import {
 import { ErrorCode, throwError } from "./errors"
 import { getWebUrl } from "./helpers"
 import { logError } from "./logger"
-import { calculatePlatformFeeAmount } from "./pricing"
+import { calculatePlatformFeeAmount, calculateRefundAmount } from "./pricing"
 import { rateLimiter } from "./rateLimiter"
 import {
   holdsSeat,
@@ -720,11 +720,46 @@ export const markPaymentsRefunded = internalMutation({
   },
 })
 
-/** Full refund of every captured seat PaymentIntent. Reverses the Connect transfer and platform fee. */
+async function refundCapturedCharge(
+  stripe: Stripe,
+  args: {
+    paymentIntentId: string
+    capturedCents: number
+    percentage: number
+    idempotencyKey: string
+  }
+): Promise<boolean> {
+  const amount =
+    args.percentage >= 100 ? undefined : calculateRefundAmount(args.capturedCents, args.percentage)
+  if (amount === 0) return false
+  await stripe.refunds.create(
+    {
+      payment_intent: args.paymentIntentId,
+      ...(amount === undefined ? {} : { amount }),
+      reverse_transfer: true,
+      refund_application_fee: true,
+      reason: "requested_by_customer",
+    },
+    { idempotencyKey: args.idempotencyKey }
+  )
+  return true
+}
+
+/**
+ * Refund captured seat PaymentIntents.
+ * `refundPercentage` defaults to 100 so lost-spot refunds stay full.
+ * A partial amount is `calculateRefundAmount` of that phase's captured cents.
+ * `refund_application_fee: true` tells Stripe to refund the application fee in
+ * proportion to the charge amount refunded (a full refund returns the full fee).
+ * Vehicle rentals intentionally keep the fee on partials; seats do not, because
+ * the clamped fee is not stored on the booking and recomputing it would be wrong.
+ * `reverse_transfer` likewise returns a proportional share of the Connect transfer.
+ */
 export const refundSeatBooking = internalAction({
   args: {
     bookingId: v.id("seatBookings"),
     reason: v.string(),
+    refundPercentage: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<void> => {
     const booking = await ctx.runQuery(internal.seatPayments.getBookingForPayment, {
@@ -732,22 +767,19 @@ export const refundSeatBooking = internalAction({
     })
     if (!booking) return
 
+    const percentage = args.refundPercentage ?? 100
     const stripe = getStripe()
     let refundedDeposit = false
     let refundedBalance = false
 
     if (booking.stripeDepositPaymentIntentId && booking.depositPaymentStatus === "paid") {
       try {
-        await stripe.refunds.create(
-          {
-            payment_intent: booking.stripeDepositPaymentIntentId,
-            reverse_transfer: true,
-            refund_application_fee: true,
-            reason: "requested_by_customer",
-          },
-          { idempotencyKey: `rf_seat_deposit_${args.bookingId}` }
-        )
-        refundedDeposit = true
+        refundedDeposit = await refundCapturedCharge(stripe, {
+          paymentIntentId: booking.stripeDepositPaymentIntentId,
+          capturedCents: booking.depositCents,
+          percentage,
+          idempotencyKey: `rf_seat_deposit_${args.bookingId}`,
+        })
       } catch (error) {
         logError(error, "Failed to refund seat deposit")
       }
@@ -755,16 +787,12 @@ export const refundSeatBooking = internalAction({
 
     if (booking.stripeBalancePaymentIntentId && booking.balancePaymentStatus === "paid") {
       try {
-        await stripe.refunds.create(
-          {
-            payment_intent: booking.stripeBalancePaymentIntentId,
-            reverse_transfer: true,
-            refund_application_fee: true,
-            reason: "requested_by_customer",
-          },
-          { idempotencyKey: `rf_seat_balance_${args.bookingId}` }
-        )
-        refundedBalance = true
+        refundedBalance = await refundCapturedCharge(stripe, {
+          paymentIntentId: booking.stripeBalancePaymentIntentId,
+          capturedCents: booking.balanceCents,
+          percentage,
+          idempotencyKey: `rf_seat_balance_${args.bookingId}`,
+        })
       } catch (error) {
         logError(error, "Failed to refund seat balance")
       }

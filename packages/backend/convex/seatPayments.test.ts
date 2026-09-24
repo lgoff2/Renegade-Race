@@ -16,6 +16,7 @@ type CheckoutParams = {
 
 type RefundParams = {
   payment_intent?: string
+  amount?: number
   reverse_transfer?: boolean
   refund_application_fee?: boolean
 }
@@ -823,7 +824,7 @@ describe("seat payment races and refunds", () => {
     )
   })
 
-  it("refunds a deposit and a confirmed booking when the team cancels, including inside 24h", async () => {
+  it("refunds everything in full when the team cancels inside 7 days", async () => {
     const t = convexTest(schema, modules)
     const deposited = await seedApprovedBooking(t)
     await t.mutation(internal.seatPayments.handleDepositSuccess, {
@@ -844,6 +845,7 @@ describe("seat payment races and refunds", () => {
     await t.finishInProgressScheduledFunctions()
 
     const asOwner = t.withIdentity({ subject: OWNER })
+    // Race start is 2031-03-14T00:00:00Z. Both times are inside 7 days.
     await withRefundTimers("2031-03-13T12:00:00Z", async () => {
       refundsCreate.mockClear()
       await asOwner.mutation(api.seatBookings.cancel, { bookingId: deposited.bookingId })
@@ -854,6 +856,14 @@ describe("seat payment races and refunds", () => {
     expect(afterDepositCancel?.status).toBe("cancelled")
     expect(afterDepositCancel?.depositPaymentStatus).toBe("refunded")
     expect(refundsCreate).toHaveBeenCalledTimes(1)
+    expect(refundsCreate.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        payment_intent: "pi_deposit_only",
+        reverse_transfer: true,
+        refund_application_fee: true,
+      })
+    )
+    expect(refundsCreate.mock.calls[0]?.[0]?.amount).toBeUndefined()
 
     await withRefundTimers("2031-03-13T18:00:00Z", async () => {
       refundsCreate.mockClear()
@@ -865,11 +875,16 @@ describe("seat payment races and refunds", () => {
     expect(afterConfirmCancel?.status).toBe("cancelled")
     expect(afterConfirmCancel?.depositPaymentStatus).toBe("refunded")
     expect(afterConfirmCancel?.balancePaymentStatus).toBe("refunded")
-    const intents = refundsCreate.mock.calls.map((call) => call[0]?.payment_intent)
-    expect(intents).toEqual(expect.arrayContaining(["pi_dep_full", "pi_bal_full"]))
+    expect(refundsCreate.mock.calls.map((call) => call[0]?.payment_intent)).toEqual(
+      expect.arrayContaining(["pi_dep_full", "pi_bal_full"])
+    )
+    for (const call of refundsCreate.mock.calls) {
+      expect(call[0]?.amount).toBeUndefined()
+      expect(call[0]?.refund_application_fee).toBe(true)
+    }
   })
 
-  it("refunds the driver with 24h+ notice and keeps the payment inside the window", async () => {
+  it("refunds the driver 100% at exactly 14 days and nothing just under 7 days", async () => {
     const t = convexTest(schema, modules)
     const early = await seedApprovedBooking(t)
     await t.mutation(internal.seatPayments.handleDepositSuccess, {
@@ -890,7 +905,8 @@ describe("seat payment races and refunds", () => {
     await t.finishInProgressScheduledFunctions()
 
     const asDriver = t.withIdentity({ subject: DRIVER_A })
-    await withRefundTimers("2031-01-01T00:00:00Z", async () => {
+    // Exactly 14 days before 2031-03-14T00:00:00Z.
+    await withRefundTimers("2031-02-28T00:00:00.000Z", async () => {
       refundsCreate.mockClear()
       await asDriver.mutation(api.seatBookings.cancel, { bookingId: early.bookingId })
       await t.finishAllScheduledFunctions(vi.runAllTimers)
@@ -899,9 +915,15 @@ describe("seat payment races and refunds", () => {
     expect(refunded?.status).toBe("cancelled")
     expect(refunded?.depositPaymentStatus).toBe("refunded")
     expect(refunded?.balancePaymentStatus).toBe("refunded")
-    expect(refundsCreate).toHaveBeenCalled()
+    expect(refundsCreate).toHaveBeenCalledTimes(2)
+    for (const call of refundsCreate.mock.calls) {
+      expect(call[0]?.amount).toBeUndefined()
+      expect(call[0]?.refund_application_fee).toBe(true)
+      expect(call[0]?.reverse_transfer).toBe(true)
+    }
 
-    await withRefundTimers("2031-03-13T12:00:00Z", async () => {
+    // 1ms inside the 7-day window: no Stripe refund, seat still cancelled.
+    await withRefundTimers("2031-03-07T00:00:00.001Z", async () => {
       refundsCreate.mockClear()
       await asDriver.mutation(api.seatBookings.cancel, { bookingId: late.bookingId })
       await t.finishAllScheduledFunctions(vi.runAllTimers)
@@ -910,6 +932,89 @@ describe("seat payment races and refunds", () => {
     expect(kept?.status).toBe("cancelled")
     expect(kept?.depositPaymentStatus).toBe("paid")
     expect(refundsCreate).not.toHaveBeenCalled()
+  })
+
+  it("refunds 50% of a deposit-only capture at exactly 7 days, including a proportional fee", async () => {
+    const t = convexTest(schema, modules)
+    const { bookingId } = await seedApprovedBooking(t)
+    await t.mutation(internal.seatPayments.handleDepositSuccess, {
+      bookingId,
+      stripePaymentIntentId: "pi_half_deposit",
+    })
+    await t.finishInProgressScheduledFunctions()
+
+    const asDriver = t.withIdentity({ subject: DRIVER_A })
+    await withRefundTimers("2031-03-07T00:00:00.000Z", async () => {
+      refundsCreate.mockClear()
+      await asDriver.mutation(api.seatBookings.cancel, { bookingId })
+      await t.finishAllScheduledFunctions(vi.runAllTimers)
+    })
+
+    const booking = await t.run((ctx) => ctx.db.get(bookingId))
+    expect(booking?.status).toBe("cancelled")
+    expect(booking?.depositPaymentStatus).toBe("refunded")
+    expect(booking?.depositCents).toBe(500_000)
+    // refund_application_fee with a partial amount is Stripe's proportional fee refund.
+    expect(refundsCreate).toHaveBeenCalledTimes(1)
+    expect(refundsCreate).toHaveBeenCalledWith(
+      {
+        payment_intent: "pi_half_deposit",
+        amount: 250_000,
+        reverse_transfer: true,
+        refund_application_fee: true,
+        reason: "requested_by_customer",
+      },
+      expect.objectContaining({ idempotencyKey: `rf_seat_deposit_${bookingId}` })
+    )
+  })
+
+  it("refunds 50% of deposit and balance at exactly 7 days, including a proportional fee", async () => {
+    const t = convexTest(schema, modules)
+    const { bookingId } = await seedApprovedBooking(t)
+    await t.mutation(internal.seatPayments.handleDepositSuccess, {
+      bookingId,
+      stripePaymentIntentId: "pi_half_dep",
+    })
+    await t.mutation(internal.seatPayments.handleBalanceSuccess, {
+      bookingId,
+      stripePaymentIntentId: "pi_half_bal",
+    })
+    await t.finishInProgressScheduledFunctions()
+
+    const asDriver = t.withIdentity({ subject: DRIVER_A })
+    await withRefundTimers("2031-03-07T00:00:00.000Z", async () => {
+      refundsCreate.mockClear()
+      await asDriver.mutation(api.seatBookings.cancel, { bookingId })
+      await t.finishAllScheduledFunctions(vi.runAllTimers)
+    })
+
+    const booking = await t.run((ctx) => ctx.db.get(bookingId))
+    expect(booking?.status).toBe("cancelled")
+    expect(booking?.depositPaymentStatus).toBe("refunded")
+    expect(booking?.balancePaymentStatus).toBe("refunded")
+    expect(booking?.depositCents).toBe(500_000)
+    expect(booking?.balanceCents).toBe(1_000_000)
+    expect(refundsCreate).toHaveBeenCalledTimes(2)
+    expect(refundsCreate).toHaveBeenCalledWith(
+      {
+        payment_intent: "pi_half_dep",
+        amount: 250_000,
+        reverse_transfer: true,
+        refund_application_fee: true,
+        reason: "requested_by_customer",
+      },
+      expect.objectContaining({ idempotencyKey: `rf_seat_deposit_${bookingId}` })
+    )
+    expect(refundsCreate).toHaveBeenCalledWith(
+      {
+        payment_intent: "pi_half_bal",
+        amount: 500_000,
+        reverse_transfer: true,
+        refund_application_fee: true,
+        reason: "requested_by_customer",
+      },
+      expect.objectContaining({ idempotencyKey: `rf_seat_balance_${bookingId}` })
+    )
   })
 
   it("refunds a full-price deposit without a balance PaymentIntent", async () => {

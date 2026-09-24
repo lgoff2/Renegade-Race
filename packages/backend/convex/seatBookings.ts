@@ -3,7 +3,11 @@ import { internal } from "./_generated/api"
 import { internalMutation, type MutationCtx, mutation, query } from "./_generated/server"
 import { checkAdmin } from "./admin"
 import { ErrorCode, throwError } from "./errors"
-import { isSeatCancellationRefundable } from "./pricing"
+import {
+  SEAT_DRIVER_FULL_REFUND_MIN_DAYS,
+  SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS,
+  seatCancellationRefundPercentage,
+} from "./pricing"
 import { rateLimiter } from "./rateLimiter"
 import { sanitizeMessage, sanitizeShortText } from "./sanitize"
 import {
@@ -461,15 +465,14 @@ export const cancel = mutation({
       (capturedDeposit || capturedBalance)
     const cancelledByTeam = isTeam && !isDriver
     const event = await ctx.db.get(booking.raceEventId)
-    const refundable =
-      captured &&
-      isSeatCancellationRefundable({
-        cancelledByTeam,
-        eventStartDate: event?.startDate ?? booking.availableStartDate,
-        now: Date.now(),
-      })
-
     const now = Date.now()
+    const refundPercentage = captured
+      ? seatCancellationRefundPercentage({
+          cancelledByTeam,
+          eventStartDate: event?.startDate ?? booking.availableStartDate,
+          now,
+        })
+      : 0
     await ctx.db.patch(args.bookingId, {
       status: "cancelled",
       cancellationReason: args.cancellationReason
@@ -492,17 +495,20 @@ export const cancel = mutation({
       await promoteOldestWaitlisted(ctx, booking.seatOfferingId)
     }
 
-    // Refund rule matches coaching: the team always refunds captured funds;
-    // the driver is refunded in full only with 24h+ notice before the event.
-    // Inside that window the team keeps the deposit and any balance already paid.
+    // Percent comes from seatCancellationRefundPercentage (team is always 100%).
     // The seat is released either way (see promote above).
-    if (captured && refundable) {
-      const reason = cancelledByTeam
+    if (captured && refundPercentage > 0) {
+      const fullReason = cancelledByTeam
         ? "The team cancelled this seat — refunded in full."
-        : "Seat cancelled with 24h+ notice — refunded in full."
+        : `Seat cancelled ${SEAT_DRIVER_FULL_REFUND_MIN_DAYS} or more days before the race — refunded in full.`
+      const partialReason =
+        `Seat cancelled at least ${SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS} and less than ` +
+        `${SEAT_DRIVER_FULL_REFUND_MIN_DAYS} days before the race — ${refundPercentage}% refunded.`
+      const reason = refundPercentage === 100 ? fullReason : partialReason
       await ctx.scheduler.runAfter(0, internal.seatPayments.refundSeatBooking, {
         bookingId: args.bookingId,
         reason,
+        refundPercentage,
       })
       await notify(ctx, {
         userId: booking.driverId,
@@ -518,7 +524,8 @@ export const cancel = mutation({
         type: "seat_cancelled",
         title: "Seat booking cancelled — no refund",
         message:
-          "You cancelled within 24 hours of the race, so per the cancellation policy this booking is non-refundable.",
+          `You cancelled less than ${SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS} days before the race, ` +
+          "so per the cancellation policy this booking is non-refundable.",
         link: "/trips",
         metadata: { bookingId: args.bookingId },
       })

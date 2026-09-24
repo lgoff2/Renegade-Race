@@ -91,23 +91,35 @@ export function isCoachingCancellationRefundable(params: {
 }
 
 /**
- * Seat cancellation refunds follow the coaching notice rule.
- * The team cancelling always refunds every captured payment in full.
- * The driver cancelling is refunded in full only when it is at least
- * `minNoticeHours` (default 24) before the race event starts; inside that
- * window the team keeps the captured deposit and balance.
- * `eventStartDate` is YYYY-MM-DD, interpreted as UTC midnight, matching coaching.
+ * Driver seat-cancellation refund tiers, measured against UTC midnight of the
+ * race event start (the same reference coaching uses for its notice window).
+ * These are the only thresholds — callers must not hardcode 14, 7, or 50.
+ *  - `SEAT_DRIVER_FULL_REFUND_MIN_DAYS` or more before start: 100% of captured funds
+ *  - at least `SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS` and less than that: partial %
+ *  - less than the partial minimum: no refund
+ * The team cancelling is always 100%, regardless of timing.
  */
-export function isSeatCancellationRefundable(params: {
+export const SEAT_DRIVER_FULL_REFUND_MIN_DAYS = 14
+export const SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS = 7
+export const SEAT_DRIVER_PARTIAL_REFUND_PERCENT = 50
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+export function seatCancellationRefundPercentage(params: {
   cancelledByTeam: boolean
   eventStartDate: string
   now: number
-  minNoticeHours?: number
-}): boolean {
-  return isCoachingCancellationRefundable({
-    cancelledByCoach: params.cancelledByTeam,
-    startDate: params.eventStartDate,
-    now: params.now,
-    minNoticeHours: params.minNoticeHours,
-  })
+}): number {
+  if (params.cancelledByTeam) return 100
+  const eventStart = Date.parse(`${params.eventStartDate}T00:00:00Z`)
+  if (Number.isNaN(eventStart)) {
+    // Unparseable date — be lenient and refund in full rather than trap funds.
+    return 100
+  }
+  const msUntilStart = eventStart - params.now
+  if (msUntilStart >= SEAT_DRIVER_FULL_REFUND_MIN_DAYS * MS_PER_DAY) return 100
+  if (msUntilStart >= SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS * MS_PER_DAY) {
+    return SEAT_DRIVER_PARTIAL_REFUND_PERCENT
+  }
+  return 0
 }
