@@ -1333,7 +1333,7 @@ export default defineSchema({
     depositPaidAt: v.optional(v.number()),
     confirmedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
-    // Stubbed until seatPayments (Stripe Checkout) lands. Do not use payments.reservationId.
+    // Stripe Checkout state lives on this row (not payments.reservationId).
     depositPaymentStatus: v.optional(
       v.union(v.literal("pending"), v.literal("paid"), v.literal("failed"), v.literal("refunded"))
     ),

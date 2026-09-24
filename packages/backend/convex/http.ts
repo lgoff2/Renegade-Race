@@ -7,6 +7,7 @@ import { api, components, internal } from "./_generated/api"
 import { httpAction } from "./_generated/server"
 import { resendComponent } from "./emails"
 import { rateLimiter } from "./rateLimiter"
+import { isSeatPaymentMetadata } from "./seatPayments"
 
 // Helper function to get Stripe instance
 function _getStripe(): Stripe {
@@ -39,6 +40,16 @@ registerRoutes(http, components.stripe, {
       }
 
       const paymentIntent = event.data.object
+
+      if (isSeatPaymentMetadata(paymentIntent.metadata)) {
+        await ctx.runMutation(internal.seatPayments.ingestPaymentIntentEvent, {
+          eventId: event.id,
+          eventType: "payment_intent.succeeded",
+          paymentIntentId: paymentIntent.id,
+          metadata: paymentIntent.metadata ?? {},
+        })
+        return
+      }
 
       // Find payment by Stripe payment intent ID
       const payment = await ctx.runQuery(api.stripe.findPaymentByStripeIntent, {
@@ -93,6 +104,17 @@ registerRoutes(http, components.stripe, {
       }
 
       const paymentIntent = event.data.object
+
+      if (isSeatPaymentMetadata(paymentIntent.metadata)) {
+        await ctx.runMutation(internal.seatPayments.ingestPaymentIntentEvent, {
+          eventId: event.id,
+          eventType: "payment_intent.payment_failed",
+          paymentIntentId: paymentIntent.id,
+          metadata: paymentIntent.metadata ?? {},
+          failureReason: paymentIntent.last_payment_error?.message,
+        })
+        return
+      }
 
       const payment = await ctx.runQuery(api.stripe.findPaymentByStripeIntent, {
         stripePaymentIntentId: paymentIntent.id,
@@ -253,6 +275,17 @@ registerRoutes(http, components.stripe, {
       }
 
       const paymentIntent = event.data.object
+
+      if (isSeatPaymentMetadata(paymentIntent.metadata)) {
+        await ctx.runMutation(internal.seatPayments.ingestPaymentIntentEvent, {
+          eventId: event.id,
+          eventType: "payment_intent.canceled",
+          paymentIntentId: paymentIntent.id,
+          metadata: paymentIntent.metadata ?? {},
+          failureReason: "Payment was canceled",
+        })
+        return
+      }
 
       await ctx.runMutation(api.stripe.handlePaymentCanceled, {
         stripePaymentIntentId: paymentIntent.id,

@@ -263,9 +263,12 @@ describe("seat bookings — request / waitlist / approve", () => {
     const asA = t.withIdentity({ subject: DRIVER_A })
     const { bookingId } = await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
 
-    await expect(t.mutation(internal.seatBookings.markDepositPaid, { bookingId })).rejects.toThrow(
-      "INVALID_STATUS"
-    )
+    await expect(
+      t.mutation(internal.seatPayments.handleDepositSuccess, {
+        bookingId,
+        stripePaymentIntentId: "pi_before_approval",
+      })
+    ).rejects.toThrow("INVALID_STATUS")
 
     const asOwner = t.withIdentity({ subject: OWNER })
     await asOwner.mutation(api.seatBookings.approve, { bookingId })
@@ -274,12 +277,20 @@ describe("seat bookings — request / waitlist / approve", () => {
     const approved = await t.run((ctx) => ctx.db.get(bookingId))
     expect(approved?.status).toBe("approved")
 
-    await t.mutation(internal.seatBookings.markDepositPaid, { bookingId })
+    await t.mutation(internal.seatPayments.handleDepositSuccess, {
+      bookingId,
+      stripePaymentIntentId: "pi_deposit",
+    })
+    await t.finishInProgressScheduledFunctions()
     const deposited = await t.run((ctx) => ctx.db.get(bookingId))
     expect(deposited?.status).toBe("deposit_paid")
     expect(deposited?.depositPaymentStatus).toBe("paid")
 
-    await t.mutation(internal.seatBookings.markBalancePaid, { bookingId })
+    await t.mutation(internal.seatPayments.handleBalanceSuccess, {
+      bookingId,
+      stripePaymentIntentId: "pi_balance",
+    })
+    await t.finishInProgressScheduledFunctions()
     const confirmed = await t.run((ctx) => ctx.db.get(bookingId))
     expect(confirmed?.status).toBe("confirmed")
   })
@@ -351,7 +362,11 @@ describe("seat bookings — request / waitlist / approve", () => {
     const asA = t.withIdentity({ subject: DRIVER_A })
     const { bookingId } = await asA.mutation(api.seatBookings.request, requestArgs(offeringId))
     await asOwner.mutation(api.seatBookings.approve, { bookingId })
-    await t.mutation(internal.seatBookings.markDepositPaid, { bookingId })
+    await t.mutation(internal.seatPayments.handleDepositSuccess, {
+      bookingId,
+      stripePaymentIntentId: "pi_full_deposit",
+    })
+    await t.finishInProgressScheduledFunctions()
 
     const booking = await t.run((ctx) => ctx.db.get(bookingId))
     expect(booking?.status).toBe("confirmed")

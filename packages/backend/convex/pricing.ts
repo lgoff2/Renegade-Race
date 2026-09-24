@@ -89,3 +89,25 @@ export function isCoachingCancellationRefundable(params: {
   }
   return params.now <= sessionStart - minNoticeMs
 }
+
+/**
+ * Seat cancellation refunds follow the coaching notice rule.
+ * The team cancelling always refunds every captured payment in full.
+ * The driver cancelling is refunded in full only when it is at least
+ * `minNoticeHours` (default 24) before the race event starts; inside that
+ * window the team keeps the captured deposit and balance.
+ * `eventStartDate` is YYYY-MM-DD, interpreted as UTC midnight, matching coaching.
+ */
+export function isSeatCancellationRefundable(params: {
+  cancelledByTeam: boolean
+  eventStartDate: string
+  now: number
+  minNoticeHours?: number
+}): boolean {
+  return isCoachingCancellationRefundable({
+    cancelledByCoach: params.cancelledByTeam,
+    startDate: params.eventStartDate,
+    now: params.now,
+    minNoticeHours: params.minNoticeHours,
+  })
+}
