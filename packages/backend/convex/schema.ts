@@ -303,13 +303,20 @@ export default defineSchema({
     renterId: v.string(),
     ownerId: v.string(),
     conversationType: v.optional(
-      v.union(v.literal("rental"), v.literal("team"), v.literal("driver"), v.literal("coaching"))
+      v.union(
+        v.literal("rental"),
+        v.literal("team"),
+        v.literal("driver"),
+        v.literal("coaching"),
+        v.literal("seat")
+      )
     ),
     teamId: v.optional(v.id("teams")),
     driverProfileId: v.optional(v.id("driverProfiles")),
     coachProfileId: v.optional(v.id("coachProfiles")),
     reservationId: v.optional(v.id("reservations")),
     coachingBookingId: v.optional(v.id("coachingBookings")),
+    seatBookingId: v.optional(v.id("seatBookings")),
     lastMessageAt: v.number(),
     lastMessageText: v.optional(v.string()),
     lastMessageSenderId: v.optional(v.string()),
@@ -330,7 +337,9 @@ export default defineSchema({
     .index("by_owner_active", ["ownerId", "isActive"])
     .index("by_participants", ["renterId", "ownerId"])
     .index("by_last_message", ["lastMessageAt"])
-    .index("by_reservation", ["reservationId"]),
+    .index("by_reservation", ["reservationId"])
+    .index("by_coaching_booking", ["coachingBookingId"])
+    .index("by_seat_booking", ["seatBookingId"]),
 
   messages: defineTable({
     conversationId: v.id("conversations"),
@@ -797,7 +806,12 @@ export default defineSchema({
       v.literal("damage_invoice"),
       v.literal("coach_profile"),
       v.literal("coaching_booking"),
-      v.literal("coaching_review")
+      v.literal("coaching_review"),
+      v.literal("race_series"),
+      v.literal("race_event"),
+      v.literal("team_car"),
+      v.literal("seat_offering"),
+      v.literal("seat_booking")
     ),
     entityId: v.string(), // ID of the entity being changed
     action: v.string(), // e.g., "status_change", "create", "update", "delete"
@@ -848,7 +862,14 @@ export default defineSchema({
       v.literal("coaching_approved"),
       v.literal("coaching_declined"),
       v.literal("coaching_cancelled"),
-      v.literal("coaching_completed")
+      v.literal("coaching_completed"),
+      v.literal("seat_request_pending"),
+      v.literal("seat_approved"),
+      v.literal("seat_declined"),
+      v.literal("seat_cancelled"),
+      v.literal("seat_waitlisted"),
+      v.literal("seat_spot_available"),
+      v.literal("seat_completed")
     ),
     title: v.string(),
     message: v.string(),
@@ -1175,6 +1196,171 @@ export default defineSchema({
     .index("by_dispute_status", ["disputeStatus"])
     .index("by_stripe_checkout_session", ["stripeCheckoutSessionId"])
     .index("by_stripe_payment_intent", ["stripePaymentIntentId"]),
+
+  // Endurance seat rentals: RaceSeries → RaceEvent → TeamCar → SeatOffering → SeatBooking.
+  // Parallel to coaching (not vehicles/reservations). Stripe IDs live on seatBookings.
+  // Request opens an in-app seat conversation immediately; public listings omit contact.
+  raceSeries: defineTable({
+    name: v.string(),
+    description: v.optional(v.string()),
+    organizer: v.optional(v.string()),
+    website: v.optional(v.string()),
+    logoUrl: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdByUserId: v.string(),
+    createdByTeamId: v.optional(v.id("teams")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_active", ["isActive"])
+    .index("by_created_by_user", ["createdByUserId"])
+    .index("by_created_by_team", ["createdByTeamId"]),
+
+  raceEvents: defineTable({
+    seriesId: v.id("raceSeries"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    startDate: v.string(), // YYYY-MM-DD
+    endDate: v.string(), // YYYY-MM-DD
+    trackId: v.optional(v.id("tracks")),
+    trackName: v.optional(v.string()), // free-text fallback when no catalog track
+    trackLocation: v.optional(v.string()),
+    eventUrl: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdByUserId: v.string(),
+    createdByTeamId: v.optional(v.id("teams")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_series", ["seriesId"])
+    .index("by_series_active", ["seriesId", "isActive"])
+    .index("by_active", ["isActive"])
+    .index("by_start_date", ["startDate"])
+    .index("by_track", ["trackId"])
+    .index("by_created_by_user", ["createdByUserId"])
+    .index("by_created_by_team", ["createdByTeamId"]),
+
+  teamCars: defineTable({
+    teamId: v.id("teams"),
+    raceEventId: v.id("raceEvents"),
+    // Stripe Connect payouts go to this user (typically the team owner).
+    hostUserId: v.string(),
+    carNumber: v.optional(v.string()),
+    carClass: v.optional(v.string()), // e.g. GT4, TCR, LMP3
+    make: v.string(),
+    model: v.string(),
+    year: v.optional(v.number()),
+    description: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_event", ["raceEventId"])
+    .index("by_team_event", ["teamId", "raceEventId"])
+    .index("by_host", ["hostUserId"])
+    .index("by_event_active", ["raceEventId", "isActive"]),
+
+  seatOfferings: defineTable({
+    teamCarId: v.id("teamCars"),
+    raceEventId: v.id("raceEvents"),
+    teamId: v.id("teams"),
+    hostUserId: v.string(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    spotCount: v.number(), // N countable seats; never trust client remaining
+    priceCents: v.number(), // full seat price at listing time
+    depositCents: v.number(),
+    experienceLevel: v.optional(
+      v.union(
+        v.literal("beginner"),
+        v.literal("intermediate"),
+        v.literal("advanced"),
+        v.literal("professional")
+      )
+    ),
+    stintNotes: v.optional(v.string()),
+    isActive: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_car", ["teamCarId"])
+    .index("by_event", ["raceEventId"])
+    .index("by_team", ["teamId"])
+    .index("by_host", ["hostUserId"])
+    .index("by_event_active", ["raceEventId", "isActive"])
+    .index("by_team_active", ["teamId", "isActive"]),
+
+  seatBookings: defineTable({
+    seatOfferingId: v.id("seatOfferings"),
+    teamCarId: v.id("teamCars"),
+    raceEventId: v.id("raceEvents"),
+    teamId: v.id("teams"),
+    hostUserId: v.string(),
+    driverId: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("waitlisted"),
+      v.literal("approved"),
+      v.literal("deposit_paid"),
+      v.literal("confirmed"),
+      v.literal("cancelled"),
+      v.literal("declined"),
+      v.literal("expired"),
+      v.literal("completed")
+    ),
+    // Snapshotted at request time — later listing edits do not change this booking.
+    priceCents: v.number(),
+    depositCents: v.number(),
+    balanceCents: v.number(),
+    platformFeePercentage: v.number(),
+    availableStartDate: v.string(),
+    availableEndDate: v.string(),
+    driverExperience: v.union(
+      v.literal("beginner"),
+      v.literal("intermediate"),
+      v.literal("advanced"),
+      v.literal("professional")
+    ),
+    budgetBand: v.string(),
+    seriesClass: v.string(),
+    whyBuying: v.string(),
+    driverMessage: v.optional(v.string()),
+    teamMessage: v.optional(v.string()),
+    cancellationReason: v.optional(v.string()),
+    approvedAt: v.optional(v.number()),
+    waitlistedAt: v.optional(v.number()),
+    depositPaidAt: v.optional(v.number()),
+    confirmedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    // Stubbed until seatPayments (Stripe Checkout) lands. Do not use payments.reservationId.
+    depositPaymentStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("paid"), v.literal("failed"), v.literal("refunded"))
+    ),
+    balancePaymentStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("paid"), v.literal("failed"), v.literal("refunded"))
+    ),
+    stripeDepositCheckoutSessionId: v.optional(v.string()),
+    stripeDepositPaymentIntentId: v.optional(v.string()),
+    stripeBalanceCheckoutSessionId: v.optional(v.string()),
+    stripeBalancePaymentIntentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_offering", ["seatOfferingId"])
+    .index("by_offering_status", ["seatOfferingId", "status"])
+    .index("by_driver", ["driverId"])
+    .index("by_driver_status", ["driverId", "status"])
+    .index("by_driver_offering", ["driverId", "seatOfferingId"])
+    .index("by_host", ["hostUserId"])
+    .index("by_host_status", ["hostUserId", "status"])
+    .index("by_team", ["teamId"])
+    .index("by_event", ["raceEventId"])
+    .index("by_status", ["status"])
+    .index("by_stripe_deposit_checkout_session", ["stripeDepositCheckoutSessionId"])
+    .index("by_stripe_deposit_payment_intent", ["stripeDepositPaymentIntentId"])
+    .index("by_stripe_balance_checkout_session", ["stripeBalanceCheckoutSessionId"])
+    .index("by_stripe_balance_payment_intent", ["stripeBalancePaymentIntentId"]),
 
   // Webhook idempotency tracking
   webhookEvents: defineTable({

@@ -1,6 +1,7 @@
 import { v } from "convex/values"
-import type { Id } from "./_generated/dataModel"
+import type { Doc, Id } from "./_generated/dataModel"
 import { mutation, type QueryCtx, query } from "./_generated/server"
+import { omitUserContact, toPublicTeamListing } from "./seatHelpers"
 
 // Resolve the primary (or first available) image key for a vehicle thumbnail
 async function getVehicleThumbnailKey(
@@ -19,6 +20,37 @@ async function getVehicleThumbnailKey(
       .withIndex("by_vehicle", (q) => q.eq("vehicleId", vehicleId))
       .first())
   return image?.r2Key ?? null
+}
+
+async function loadSeatBookingSummary(
+  ctx: QueryCtx,
+  seatBookingId: Id<"seatBookings"> | undefined
+) {
+  if (!seatBookingId) return null
+  const seat = await ctx.db.get(seatBookingId)
+  if (!seat) return null
+  return {
+    _id: String(seat._id),
+    status: seat.status,
+    priceCents: seat.priceCents,
+    depositCents: seat.depositCents,
+  }
+}
+
+function seatConversationTeam(
+  conversationType: string | undefined,
+  team: Doc<"teams"> | null | any
+) {
+  if (conversationType !== "seat") return team
+  return toPublicTeamListing(team as Doc<"teams"> | null)
+}
+
+function seatConversationParty<T extends { email?: string; phone?: string }>(
+  conversationType: string | undefined,
+  user: T | null
+) {
+  if (conversationType !== "seat") return user
+  return omitUserContact(user)
 }
 
 // Get conversations for a user (as renter or owner)
@@ -107,16 +139,19 @@ export const getByUser = query({
           }
         }
 
+        const seatBooking = await loadSeatBookingSummary(ctx, conversation.seatBookingId)
+
         return {
           ...conversation,
           vehicle,
           vehicleImageKey,
-          renter,
-          owner,
-          team,
+          renter: seatConversationParty(conversation.conversationType, renter),
+          owner: seatConversationParty(conversation.conversationType, owner),
+          team: seatConversationTeam(conversation.conversationType, team),
           driverProfile,
           coachProfile,
           reservation,
+          seatBooking,
         }
       })
     )
@@ -229,16 +264,19 @@ export const getById = query({
       }
     }
 
+    const seatBooking = await loadSeatBookingSummary(ctx, conversation.seatBookingId)
+
     return {
       ...conversation,
       vehicle,
       vehicleImageKey,
-      renter,
-      owner,
-      team,
+      renter: seatConversationParty(conversation.conversationType, renter),
+      owner: seatConversationParty(conversation.conversationType, owner),
+      team: seatConversationTeam(conversation.conversationType, team),
       driverProfile,
       coachProfile,
       reservation,
+      seatBooking,
     }
   },
 })
