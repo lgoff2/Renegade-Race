@@ -55,6 +55,7 @@ import type * as sanitize from "../sanitize.js";
 import type * as seedCoaches from "../seedCoaches.js";
 import type * as seatBookings from "../seatBookings.js";
 import type * as seatHelpers from "../seatHelpers.js";
+import type * as seatPayments from "../seatPayments.js";
 import type * as seatOfferings from "../seatOfferings.js";
 import type * as stripe from "../stripe.js";
 import type * as teamApplications from "../teamApplications.js";
@@ -125,6 +126,7 @@ declare const fullApi: ApiFromModules<{
   seedCoaches: typeof seedCoaches;
   seatBookings: typeof seatBookings;
   seatHelpers: typeof seatHelpers;
+  seatPayments: typeof seatPayments;
   seatOfferings: typeof seatOfferings;
   stripe: typeof stripe;
   teamApplications: typeof teamApplications;

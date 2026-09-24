@@ -3,6 +3,11 @@ import { internal } from "./_generated/api"
 import { internalMutation, type MutationCtx, mutation, query } from "./_generated/server"
 import { checkAdmin } from "./admin"
 import { ErrorCode, throwError } from "./errors"
+import {
+  SEAT_DRIVER_FULL_REFUND_MIN_DAYS,
+  SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS,
+  seatCancellationRefundPercentage,
+} from "./pricing"
 import { rateLimiter } from "./rateLimiter"
 import { sanitizeMessage, sanitizeShortText } from "./sanitize"
 import {
@@ -451,7 +456,23 @@ export const cancel = mutation({
     }
 
     const wasHolding = holdsSeat(booking.status)
+    const capturedDeposit =
+      booking.depositPaymentStatus === "paid" && !!booking.stripeDepositPaymentIntentId
+    const capturedBalance =
+      booking.balancePaymentStatus === "paid" && !!booking.stripeBalancePaymentIntentId
+    const captured =
+      (booking.status === "deposit_paid" || booking.status === "confirmed") &&
+      (capturedDeposit || capturedBalance)
+    const cancelledByTeam = isTeam && !isDriver
+    const event = await ctx.db.get(booking.raceEventId)
     const now = Date.now()
+    const refundPercentage = captured
+      ? seatCancellationRefundPercentage({
+          cancelledByTeam,
+          eventStartDate: event?.startDate ?? booking.availableStartDate,
+          now,
+        })
+      : 0
     await ctx.db.patch(args.bookingId, {
       status: "cancelled",
       cancellationReason: args.cancellationReason
@@ -472,6 +493,42 @@ export const cancel = mutation({
 
     if (wasHolding) {
       await promoteOldestWaitlisted(ctx, booking.seatOfferingId)
+    }
+
+    // Percent comes from seatCancellationRefundPercentage (team is always 100%).
+    // The seat is released either way (see promote above).
+    if (captured && refundPercentage > 0) {
+      const fullReason = cancelledByTeam
+        ? "The team cancelled this seat — refunded in full."
+        : `Seat cancelled ${SEAT_DRIVER_FULL_REFUND_MIN_DAYS} or more days before the race — refunded in full.`
+      const partialReason =
+        `Seat cancelled at least ${SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS} and less than ` +
+        `${SEAT_DRIVER_FULL_REFUND_MIN_DAYS} days before the race — ${refundPercentage}% refunded.`
+      const reason = refundPercentage === 100 ? fullReason : partialReason
+      await ctx.scheduler.runAfter(0, internal.seatPayments.refundSeatBooking, {
+        bookingId: args.bookingId,
+        reason,
+        refundPercentage,
+      })
+      await notify(ctx, {
+        userId: booking.driverId,
+        type: "seat_cancelled",
+        title: "Seat payment refunded",
+        message: reason,
+        link: "/trips",
+        metadata: { bookingId: args.bookingId },
+      })
+    } else if (captured) {
+      await notify(ctx, {
+        userId: booking.driverId,
+        type: "seat_cancelled",
+        title: "Seat booking cancelled — no refund",
+        message:
+          `You cancelled less than ${SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS} days before the race, ` +
+          "so per the cancellation policy this booking is non-refundable.",
+        link: "/trips",
+        metadata: { bookingId: args.bookingId },
+      })
     }
 
     await auditStatusChange(ctx, {
@@ -527,100 +584,6 @@ export const complete = mutation({
   },
 })
 
-/**
- * Stripe webhook stub: records deposit payment. Approve-before-confirm is
- * enforced here — pending/waitlisted bookings cannot be paid.
- * If the deposit covers the full price, the booking is confirmed immediately.
- */
-export const markDepositPaid = internalMutation({
-  args: {
-    bookingId: v.id("seatBookings"),
-    stripeCheckoutSessionId: v.optional(v.string()),
-    stripePaymentIntentId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const booking = await ctx.db.get(args.bookingId)
-    if (!booking) {
-      throwError(ErrorCode.NOT_FOUND, "Seat booking not found")
-    }
-    if (booking.status !== "approved") {
-      throwError(
-        ErrorCode.INVALID_STATUS,
-        "Seat must be team-approved before deposit payment can confirm"
-      )
-    }
-
-    const offering = await ctx.db.get(booking.seatOfferingId)
-    if (!offering) {
-      throwError(ErrorCode.NOT_FOUND, "Seat offering not found")
-    }
-    const inventory = await getOfferingInventory(ctx, offering, args.bookingId)
-    if (inventory.held >= offering.spotCount) {
-      throwError(ErrorCode.CONFLICT, "No seats remaining on this offering")
-    }
-
-    const now = Date.now()
-    const fullyPaid = booking.balanceCents <= 0
-    await ctx.db.patch(args.bookingId, {
-      status: fullyPaid ? "confirmed" : "deposit_paid",
-      depositPaymentStatus: "paid",
-      balancePaymentStatus: fullyPaid ? "paid" : booking.balancePaymentStatus,
-      depositPaidAt: now,
-      confirmedAt: fullyPaid ? now : undefined,
-      stripeDepositCheckoutSessionId: args.stripeCheckoutSessionId,
-      stripeDepositPaymentIntentId: args.stripePaymentIntentId,
-      updatedAt: now,
-    })
-
-    await auditStatusChange(ctx, {
-      bookingId: args.bookingId,
-      previousStatus: "approved",
-      newStatus: fullyPaid ? "confirmed" : "deposit_paid",
-    })
-
-    return args.bookingId
-  },
-})
-
-/** Stripe webhook stub: records balance payment and confirms the seat. */
-export const markBalancePaid = internalMutation({
-  args: {
-    bookingId: v.id("seatBookings"),
-    stripeCheckoutSessionId: v.optional(v.string()),
-    stripePaymentIntentId: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const booking = await ctx.db.get(args.bookingId)
-    if (!booking) {
-      throwError(ErrorCode.NOT_FOUND, "Seat booking not found")
-    }
-    if (booking.status !== "deposit_paid") {
-      throwError(
-        ErrorCode.INVALID_STATUS,
-        "Balance can only be paid after the deposit, on an approved booking"
-      )
-    }
-
-    const now = Date.now()
-    await ctx.db.patch(args.bookingId, {
-      status: "confirmed",
-      balancePaymentStatus: "paid",
-      confirmedAt: now,
-      stripeBalanceCheckoutSessionId: args.stripeCheckoutSessionId,
-      stripeBalancePaymentIntentId: args.stripePaymentIntentId,
-      updatedAt: now,
-    })
-
-    await auditStatusChange(ctx, {
-      bookingId: args.bookingId,
-      previousStatus: "deposit_paid",
-      newStatus: "confirmed",
-    })
-
-    return args.bookingId
-  },
-})
-
 export const expireApprovedUnpaidBookings = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -633,7 +596,13 @@ export const expireApprovedUnpaidBookings = internalMutation({
       .filter((q) => q.lt(q.field("approvedAt"), now - APPROVED_TIMEOUT_MS))
       .collect()
 
+    let expiredCount = 0
     for (const booking of expired) {
+      // A captured deposit is waiting on a refund or a webhook replay, not the 48h clock.
+      if (booking.depositPaymentStatus === "paid" || booking.depositPaymentStatus === "refunded") {
+        continue
+      }
+      expiredCount += 1
       await ctx.db.patch(booking._id, {
         status: "expired",
         cancellationReason: "Approval expired — deposit not completed within 48 hours",
@@ -657,7 +626,7 @@ export const expireApprovedUnpaidBookings = internalMutation({
       })
     }
 
-    return { expired: expired.length }
+    return { expired: expiredCount }
   },
 })
 

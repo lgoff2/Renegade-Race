@@ -1,10 +1,14 @@
 import {
   calculateAddOnsTotal,
-  calculateReservationTotal,
   calculatePlatformFeeAmount,
-  datesOverlap,
   calculateRefundAmount,
+  calculateReservationTotal,
+  datesOverlap,
   isCoachingCancellationRefundable,
+  SEAT_DRIVER_FULL_REFUND_MIN_DAYS,
+  SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS,
+  SEAT_DRIVER_PARTIAL_REFUND_PERCENT,
+  seatCancellationRefundPercentage,
 } from "./pricing"
 
 // ============================================================================
@@ -284,5 +288,75 @@ describe("isCoachingCancellationRefundable", () => {
         now,
       })
     ).toBe(false)
+  })
+})
+
+// ============================================================================
+// seatCancellationRefundPercentage
+// ============================================================================
+
+describe("seatCancellationRefundPercentage", () => {
+  const eventStartDate = "2031-03-14"
+  const eventStart = Date.parse(`${eventStartDate}T00:00:00Z`)
+  const dayMs = 24 * 60 * 60 * 1000
+
+  it("refunds the team in full inside the shortest window", () => {
+    expect(
+      seatCancellationRefundPercentage({
+        cancelledByTeam: true,
+        eventStartDate,
+        now: eventStart - dayMs,
+      })
+    ).toBe(100)
+  })
+
+  it("refunds 100% at exactly the full-refund threshold", () => {
+    expect(SEAT_DRIVER_FULL_REFUND_MIN_DAYS).toBe(14)
+    expect(
+      seatCancellationRefundPercentage({
+        cancelledByTeam: false,
+        eventStartDate,
+        now: eventStart - SEAT_DRIVER_FULL_REFUND_MIN_DAYS * dayMs,
+      })
+    ).toBe(100)
+  })
+
+  it("refunds the partial percent at exactly the partial threshold and just under 14 days", () => {
+    expect(SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS).toBe(7)
+    expect(SEAT_DRIVER_PARTIAL_REFUND_PERCENT).toBe(50)
+    expect(
+      seatCancellationRefundPercentage({
+        cancelledByTeam: false,
+        eventStartDate,
+        now: eventStart - SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS * dayMs,
+      })
+    ).toBe(50)
+    expect(
+      seatCancellationRefundPercentage({
+        cancelledByTeam: false,
+        eventStartDate,
+        now: eventStart - SEAT_DRIVER_FULL_REFUND_MIN_DAYS * dayMs + 1,
+      })
+    ).toBe(50)
+  })
+
+  it("refunds nothing just under the partial threshold", () => {
+    expect(
+      seatCancellationRefundPercentage({
+        cancelledByTeam: false,
+        eventStartDate,
+        now: eventStart - SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS * dayMs + 1,
+      })
+    ).toBe(0)
+  })
+
+  it("refunds in full when the event date cannot be parsed", () => {
+    expect(
+      seatCancellationRefundPercentage({
+        cancelledByTeam: false,
+        eventStartDate: "not-a-date",
+        now: eventStart,
+      })
+    ).toBe(100)
   })
 })
