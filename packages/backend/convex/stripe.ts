@@ -5,7 +5,7 @@ import { api, components, internal } from "./_generated/api"
 import type { Id } from "./_generated/dataModel"
 import { action, internalAction, mutation, query } from "./_generated/server"
 import { checkAdmin } from "./admin"
-import { calculateDaysBetween, parseLocalDate } from "./dateUtils"
+import { parseLocalDate } from "./dateUtils"
 import { calculateAddOnsTotal, calculatePlatformFeeAmount, calculateRefundAmount } from "./pricing"
 import {
   getPaymentFailedEmailTemplate,
@@ -353,10 +353,7 @@ export const createConnectAccount = action({
       baseUrl.startsWith("http://")
 
     // Production allowed domains
-    const allowedProductionDomains = [
-      "https://renegaderace.com",
-      "https://www.renegaderace.com",
-    ]
+    const allowedProductionDomains = ["https://renegaderace.com", "https://www.renegaderace.com"]
 
     // If not development, validate against allowed domains
     if (!isDevelopment) {
@@ -594,8 +591,10 @@ export const createCheckoutSession = action({
       throwError(ErrorCode.NOT_FOUND, "Vehicle not found")
     }
 
-    // Recalculate total from current pricing (server-side validation)
-    const totalDays = calculateDaysBetween(reservation.startDate, reservation.endDate)
+    // Recalculate total from current pricing (server-side validation).
+    // Use the stored rental length so start-date + duration stays consistent
+    // (inclusive occupied days), rather than hotel-style date-pair math.
+    const totalDays = reservation.totalDays
     const baseAmount = totalDays * vehicle.dailyRate
 
     // Validate add-ons against vehicle's current add-ons
@@ -829,8 +828,10 @@ export const createPaymentIntent = action({
       throwError(ErrorCode.NOT_FOUND, "Vehicle not found")
     }
 
-    // Recalculate total from current pricing (server-side validation)
-    const totalDays = calculateDaysBetween(reservation.startDate, reservation.endDate)
+    // Recalculate total from current pricing (server-side validation).
+    // Use the stored rental length so start-date + duration stays consistent
+    // (inclusive occupied days), rather than hotel-style date-pair math.
+    const totalDays = reservation.totalDays
     const baseAmount = totalDays * vehicle.dailyRate
 
     // Validate add-ons against vehicle's current add-ons

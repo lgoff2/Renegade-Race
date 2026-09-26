@@ -46,26 +46,30 @@ export const checkAvailability = query({
     // Check if any date in the range is blocked
     const blockedDates = availability.filter((a) => !a.isAvailable)
 
-    // Get conflicting reservations
-    // Two date ranges overlap if: existingStart <= newEnd AND existingEnd >= newStart
-    const conflictingReservations = await ctx.db
+    // Overlapping bookings/requests are informational. They do not make the
+    // range unavailable — owners/admins decide which request wins.
+    const overlappingReservations = await ctx.db
       .query("reservations")
       .withIndex("by_vehicle", (q) => q.eq("vehicleId", vehicleId))
       .filter((q) =>
         q.and(
-          // Only confirmed reservations block availability
-          q.eq(q.field("status"), "confirmed"),
-          // Check for date overlap: existing reservation overlaps if
-          // existingStart <= newEnd AND existingEnd >= newStart
+          q.or(
+            q.eq(q.field("status"), "pending"),
+            q.eq(q.field("status"), "approved"),
+            q.eq(q.field("status"), "confirmed")
+          ),
           q.and(q.lte(q.field("startDate"), endDate), q.gte(q.field("endDate"), startDate))
         )
       )
       .collect()
 
+    const conflictingReservations = overlappingReservations.filter((r) => r.status === "confirmed")
+
     return {
-      isAvailable: blockedDates.length === 0 && conflictingReservations.length === 0,
+      isAvailable: blockedDates.length === 0,
       blockedDates,
       conflictingReservations,
+      overlappingReservations,
     }
   },
 })
@@ -295,13 +299,18 @@ export const getCalendarData = query({
       .filter((q) => q.and(q.gte(q.field("date"), startDate), q.lte(q.field("date"), endDate)))
       .collect()
 
-    // Get reservations for the month
+    // Get reservations and pending/approved requests for the month so owners
+    // can see demand without treating it as a renter-side block.
     const reservations = await ctx.db
       .query("reservations")
       .withIndex("by_vehicle", (q) => q.eq("vehicleId", vehicleId))
       .filter((q) =>
         q.and(
-          q.eq(q.field("status"), "confirmed"),
+          q.or(
+            q.eq(q.field("status"), "pending"),
+            q.eq(q.field("status"), "approved"),
+            q.eq(q.field("status"), "confirmed")
+          ),
           q.or(q.and(q.lte(q.field("startDate"), endDate), q.gte(q.field("endDate"), startDate)))
         )
       )
