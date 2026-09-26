@@ -207,7 +207,7 @@ function CheckoutSuccessContent() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Clock className="size-5 text-muted-foreground" />
-                      <span className="font-medium">Pickup Time</span>
+                      <span className="font-medium">Start time</span>
                     </div>
                     <span>{reservation.pickupTime}</span>
                   </div>
@@ -217,7 +217,7 @@ function CheckoutSuccessContent() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Clock className="size-5 text-muted-foreground" />
-                      <span className="font-medium">Dropoff Time</span>
+                      <span className="font-medium">End time</span>
                     </div>
                     <span>{reservation.dropoffTime}</span>
                   </div>

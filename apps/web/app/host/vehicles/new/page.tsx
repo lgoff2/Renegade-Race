@@ -561,7 +561,7 @@ export default function CreateVehiclePage() {
             </div>
 
             <div className="border-t pt-6">
-              <h3 className="mb-4 font-semibold">Pickup Location</h3>
+              <h3 className="mb-4 font-semibold">Location</h3>
               <div className="space-y-2">
                 <Label htmlFor="zipCode">ZIP Code *</Label>
                 <Input

@@ -346,7 +346,7 @@ function CheckoutPageContent() {
                 <div>
                   <Label className="mb-2 flex items-center gap-2" htmlFor="pickup-date">
                     <CalendarIcon className="size-4" />
-                    Pickup Date
+                    Start date
                   </Label>
                   <Popover onOpenChange={setOpenPickupDate} open={openPickupDate}>
                     <PopoverTrigger asChild>
@@ -414,11 +414,11 @@ function CheckoutPageContent() {
                 <div>
                   <Label className="mb-2 flex items-center gap-2" htmlFor="pickup-time">
                     <Clock className="size-4" />
-                    Pickup Time
+                    Start time
                   </Label>
                   <Select onValueChange={setPickupTime} required value={pickupTime}>
                     <SelectTrigger id="pickup-time">
-                      <SelectValue placeholder="Select pickup time" />
+                      <SelectValue placeholder="Select start time" />
                     </SelectTrigger>
                     <SelectContent>
                       {timeOptions.map((time) => (
@@ -438,7 +438,7 @@ function CheckoutPageContent() {
                 <div>
                   <Label className="mb-2 flex items-center gap-2" htmlFor="dropoff-date">
                     <CalendarIcon className="size-4" />
-                    Dropoff Date
+                    End date
                   </Label>
                   <Popover onOpenChange={setOpenDropoffDate} open={openDropoffDate}>
                     <PopoverTrigger asChild>
@@ -506,11 +506,11 @@ function CheckoutPageContent() {
                 <div>
                   <Label className="mb-2 flex items-center gap-2" htmlFor="dropoff-time">
                     <Clock className="size-4" />
-                    Dropoff Time
+                    End time
                   </Label>
                   <Select onValueChange={setDropoffTime} required value={dropoffTime}>
                     <SelectTrigger id="dropoff-time">
-                      <SelectValue placeholder="Select dropoff time" />
+                      <SelectValue placeholder="Select end time" />
                     </SelectTrigger>
                     <SelectContent>
                       {timeOptions.map((time) => (
