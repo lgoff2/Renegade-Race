@@ -505,7 +505,7 @@ export function OnboardingFlow({ initialStep = 1 }: { initialStep?: number }) {
           <div className="mb-4 md:mb-8">
             <h1 className="mb-2 font-bold text-3xl">Vehicle & Location</h1>
             <p className="text-muted-foreground">
-              Tell us about your vehicle and where renters can pick it up.
+              Tell us about your vehicle and where it is based.
             </p>
           </div>
 
@@ -654,7 +654,7 @@ export function OnboardingFlow({ initialStep = 1 }: { initialStep?: number }) {
               </div>
 
               <div className="border-t pt-6">
-                <h3 className="mb-4 font-semibold">Pickup Location</h3>
+                <h3 className="mb-4 font-semibold">Location</h3>
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="street">Street Address *</Label>

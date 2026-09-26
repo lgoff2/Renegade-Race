@@ -28,13 +28,13 @@ export default function HowItWorksPage() {
       icon: Flag,
       title: "Hit the Track",
       description:
-        "Meet the host, complete the vehicle inspection, and head to the track. Push the limits in a high-performance vehicle built for racing.",
+        "The owner brings the car to the track and supports you there through the rental. Push the limits in a high-performance vehicle built for racing.",
     },
     {
       icon: Star,
       title: "Return & Review",
       description:
-        "Return the vehicle in the same condition, complete the return inspection, and leave a review to help future renters.",
+        "When the rental ends, complete the return inspection and leave a review to help future renters.",
     },
   ]
 

@@ -163,7 +163,7 @@ export default defineSchema({
         priceType: v.optional(v.union(v.literal("daily"), v.literal("one-time"))),
       })
     ),
-    // Pickup location address
+    // Listing location address
     address: v.optional(
       v.object({
         street: v.optional(v.string()),

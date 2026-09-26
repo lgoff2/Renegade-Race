@@ -327,7 +327,7 @@ function PayPageContent() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Clock className="size-4 text-muted-foreground" />
-                      <span className="text-sm">Pickup</span>
+                      <span className="text-sm">Start time</span>
                     </div>
                     <span className="text-sm">{formatTimeForDisplay(reservation.pickupTime)}</span>
                   </div>
@@ -337,7 +337,7 @@ function PayPageContent() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Clock className="size-4 text-muted-foreground" />
-                      <span className="text-sm">Dropoff</span>
+                      <span className="text-sm">End time</span>
                     </div>
                     <span className="text-sm">{formatTimeForDisplay(reservation.dropoffTime)}</span>
                   </div>
@@ -412,7 +412,7 @@ function PayPageContent() {
 
               {reservation.pickupTime && (
                 <div className="rounded-lg border bg-muted/50 p-4">
-                  <h4 className="mb-2 font-semibold text-sm">Pickup Details</h4>
+                  <h4 className="mb-2 font-semibold text-sm">Rental start</h4>
                   <p className="text-muted-foreground text-sm">
                     {formatDateForDisplay(reservation.startDate)} at{" "}
                     {formatTimeForDisplay(reservation.pickupTime)}
@@ -422,7 +422,7 @@ function PayPageContent() {
 
               {reservation.dropoffTime && (
                 <div className="rounded-lg border bg-muted/50 p-4">
-                  <h4 className="mb-2 font-semibold text-sm">Dropoff Details</h4>
+                  <h4 className="mb-2 font-semibold text-sm">Rental end</h4>
                   <p className="text-muted-foreground text-sm">
                     {formatDateForDisplay(reservation.endDate)} at{" "}
                     {formatTimeForDisplay(reservation.dropoffTime)}

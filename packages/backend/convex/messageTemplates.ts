@@ -10,11 +10,6 @@ const PLATFORM_TEMPLATES = [
     category: "inquiry" as const,
   },
   {
-    label: "Pickup Location",
-    content: "What's the pickup location?",
-    category: "inquiry" as const,
-  },
-  {
     label: "Vehicle Condition",
     content: "Can you tell me about the vehicle condition?",
     category: "inquiry" as const,
@@ -30,13 +25,8 @@ const PLATFORM_TEMPLATES = [
     category: "response" as const,
   },
   {
-    label: "Pickup Instructions",
-    content: "Here are the pickup instructions...",
-    category: "logistics" as const,
-  },
-  {
-    label: "Drop-off Instructions",
-    content: "Please return the vehicle to the same location. Make sure to refuel before drop-off.",
+    label: "Track Support",
+    content: "I'll bring the car to the track and support you there through the rental.",
     category: "logistics" as const,
   },
   {

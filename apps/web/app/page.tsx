@@ -40,7 +40,7 @@ const STEPS = [
   {
     icon: Car,
     title: "Hit the Track",
-    body: "Pick up your vehicle and experience the ultimate track day with peace of mind. We provide full support throughout your rental.",
+    body: "The owner brings the car to the track and supports you there through the rental.",
   },
 ]
 
