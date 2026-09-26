@@ -24,6 +24,7 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 import { CoachCancelDialog } from "@/components/coach-cancel-dialog"
 import { CoachReviewDialog } from "@/components/coach-review-dialog"
+import { SeatBookingsList } from "@/components/seat-bookings-list"
 import { TripCard } from "@/components/trip-card"
 import type { Id } from "@/lib/convex"
 import { api } from "@/lib/convex"
@@ -342,6 +343,8 @@ export default function TripsPage() {
     user?.id ? { userId: user.id, role: "renter" as const } : "skip"
   )
 
+  const seatData = useQuery(api.seatBookings.getByDriver, user?.id ? {} : "skip")
+
   const { pendingRequests, awaitingPayment, upcoming, past, cancelled } = useMemo(() => {
     if (!reservationsData) {
       return { pendingRequests: [], awaitingPayment: [], upcoming: [], past: [], cancelled: [] }
@@ -428,6 +431,10 @@ export default function TripsPage() {
               <TabsTrigger value="coaching">
                 Coaching
                 {coachingData && coachingData.length > 0 && ` (${coachingData.length})`}
+              </TabsTrigger>
+              <TabsTrigger value="seats">
+                Race seats
+                {seatData && seatData.length > 0 && ` (${seatData.length})`}
               </TabsTrigger>
             </TabsList>
 
@@ -542,6 +549,10 @@ export default function TripsPage() {
           {/* Coaching */}
           <TabsContent value="coaching">
             <CoachingBookingsList coachingData={coachingData} />
+          </TabsContent>
+
+          <TabsContent value="seats">
+            <SeatBookingsList bookings={seatData} />
           </TabsContent>
 
           {/* Cancelled */}
