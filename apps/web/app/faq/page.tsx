@@ -44,8 +44,8 @@ const sections: { id: string; title: string; intro: string; items: FaqItem[] }[]
             <p>
               Create an account, then open <Link href="/vehicles">Browse Vehicles</Link>. Pick a car
               and choose your dates. <strong>Reserve Now</strong> opens checkout, where you review
-              the price, pickup details, and that car's cancellation policy.{" "}
-              <strong>Submit Request</strong> sends it to the host.
+              the price and that car's cancellation policy. <strong>Submit Request</strong> sends it
+              to the host.
             </p>
             <p>Nothing is charged when you submit. You can message the host while you wait.</p>
           </>
@@ -80,10 +80,10 @@ const sections: { id: string; title: string; intro: string; items: FaqItem[] }[]
         question: "What happens on the rental day?",
         answer: (
           <p>
-            Meet the host, look the car over, and complete the handoff. When the trip ends, both of
-            you record the return. If something is damaged, the host can send a separate damage
-            invoice for you to pay. Track insurance is not included — a normal auto policy usually
-            does not cover track use. Gear requirements are on the{" "}
+            The owner brings the car to the track and supports you there through the rental. When
+            the trip ends, both of you record the return. If something is damaged, the host can send
+            a separate damage invoice for you to pay. Track insurance is not included — a normal
+            auto policy usually does not cover track use. Gear requirements are on the{" "}
             <Link href="/safety">safety</Link> page.
           </p>
         ),
@@ -105,7 +105,7 @@ const sections: { id: string; title: string; intro: string; items: FaqItem[] }[]
               has five steps:
             </p>
             <ol className="list-decimal space-y-1 pl-5">
-              <li>Vehicle and pickup location, including the daily rate</li>
+              <li>Vehicle and location, including the daily rate</li>
               <li>Photos</li>
               <li>Optional add-ons</li>
               <li>Availability</li>

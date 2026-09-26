@@ -28,9 +28,7 @@ describe("FAQ page", () => {
       "/vehicles"
     )
 
-    expect(
-      screen.getByText("Vehicle and pickup location, including the daily rate")
-    ).toBeInTheDocument()
+    expect(screen.getByText("Vehicle and location, including the daily rate")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Become a Host" })).toHaveAttribute(
       "href",
       "/host/onboarding"
