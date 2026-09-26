@@ -1,5 +1,6 @@
 "use client"
 
+import { useUser } from "@clerk/nextjs"
 import { Button } from "@workspace/ui/components/button"
 import { Card, CardContent } from "@workspace/ui/components/card"
 import { Separator } from "@workspace/ui/components/separator"
@@ -7,12 +8,14 @@ import { useQuery } from "convex/react"
 import { Calendar, CheckCircle2, Clock, MapPin } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
-import { Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Suspense, useEffect } from "react"
+import { SeatSuccessView } from "@/components/seat-success-view"
 import type { Id } from "@/lib/convex"
 import { api } from "@/lib/convex"
 import { formatDateForDisplay } from "@/lib/date-utils"
 import { r2Url } from "@/lib/r2-url"
+import { type SeatPayPhase, toSeatBookingView } from "@/lib/seat-checkout"
 
 function CoachingSuccessCard({ bookingId }: { bookingId: Id<"coachingBookings"> }) {
   const booking = useQuery(api.coachingBookings.getById, { id: bookingId })
@@ -92,10 +95,64 @@ function CoachingSuccessCard({ bookingId }: { bookingId: Id<"coachingBookings"> 
   )
 }
 
+function SeatSuccessCard({
+  bookingId,
+  phase,
+}: {
+  bookingId: Id<"seatBookings">
+  phase: SeatPayPhase | null
+}) {
+  const { isLoaded, isSignedIn } = useUser()
+  const router = useRouter()
+  const booking = useQuery(api.seatBookings.getById, isSignedIn ? { bookingId } : "skip")
+
+  useEffect(() => {
+    if (!isLoaded || isSignedIn) return
+    const phaseQuery = phase ? `&phase=${phase}` : ""
+    const next = `/checkout/success?seatBookingId=${bookingId}${phaseQuery}`
+    router.push(`/sign-in?redirect_url=${encodeURIComponent(next)}`)
+  }, [bookingId, isLoaded, isSignedIn, phase, router])
+
+  if (!(isLoaded && isSignedIn) || booking === undefined) {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-muted-foreground">Loading seat details...</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!booking) {
+    return (
+      <div className="container mx-auto max-w-2xl px-4 py-8">
+        <Card>
+          <CardContent className="py-12 text-center">
+            <h2 className="mb-2 font-bold text-2xl">Seat booking not found</h2>
+            <Button asChild className="mt-6">
+              <Link href="/trips">View my trips</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  return (
+    <SeatSuccessView booking={toSeatBookingView(booking)} bookingId={bookingId} phase={phase} />
+  )
+}
+
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams()
   const reservationId = searchParams.get("reservationId")
   const coachingBookingId = searchParams.get("coachingBookingId")
+  const seatBookingId = searchParams.get("seatBookingId")
+  const seatPhaseParam = searchParams.get("phase")
+  const seatPhase: SeatPayPhase | null =
+    seatPhaseParam === "deposit" || seatPhaseParam === "balance" ? seatPhaseParam : null
 
   const reservation = useQuery(
     api.reservations.getById,
@@ -104,6 +161,10 @@ function CheckoutSuccessContent() {
 
   if (coachingBookingId) {
     return <CoachingSuccessCard bookingId={coachingBookingId as Id<"coachingBookings">} />
+  }
+
+  if (seatBookingId) {
+    return <SeatSuccessCard bookingId={seatBookingId as Id<"seatBookings">} phase={seatPhase} />
   }
 
   if (!reservationId) {

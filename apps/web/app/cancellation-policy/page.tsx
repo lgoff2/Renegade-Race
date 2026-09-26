@@ -1,3 +1,8 @@
+import {
+  SEAT_DRIVER_FULL_REFUND_MIN_DAYS,
+  SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS,
+  SEAT_DRIVER_PARTIAL_REFUND_PERCENT,
+} from "@renegade/backend/convex/pricing"
 import { Card, CardContent, CardHeader, CardTitle } from "@workspace/ui/components/card"
 import { Check, X } from "lucide-react"
 
@@ -43,6 +48,44 @@ export default function CancellationPolicyPage() {
           booking to understand your refund eligibility
         </p>
       </div>
+
+      <Card className="mb-12">
+        <CardHeader>
+          <CardTitle className="text-2xl">Endurance race seats</CardTitle>
+          <p className="text-muted-foreground text-sm">
+            Refunds are measured from the race start date. Cancelling frees the seat immediately.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="font-medium text-sm">
+                {SEAT_DRIVER_FULL_REFUND_MIN_DAYS}+ days before the race
+              </p>
+              <p className="text-muted-foreground text-xs">100% refund of everything paid</p>
+            </div>
+            <div>
+              <p className="font-medium text-sm">
+                At least {SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS} and less than{" "}
+                {SEAT_DRIVER_FULL_REFUND_MIN_DAYS} days before
+              </p>
+              <p className="text-muted-foreground text-xs">
+                {SEAT_DRIVER_PARTIAL_REFUND_PERCENT}% refund of everything paid
+              </p>
+            </div>
+            <div>
+              <p className="font-medium text-sm">
+                Less than {SEAT_DRIVER_PARTIAL_REFUND_MIN_DAYS} days before
+              </p>
+              <p className="text-muted-foreground text-xs">No refund</p>
+            </div>
+            <div>
+              <p className="font-medium text-sm">The team cancels</p>
+              <p className="text-muted-foreground text-xs">100% refund, at any time</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Policy Comparison */}
       <div className="mb-12 grid gap-6 md:grid-cols-3">
