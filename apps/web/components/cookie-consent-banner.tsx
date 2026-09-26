@@ -40,7 +40,7 @@ export function CookieConsentBanner() {
       aria-label="Cookie consent"
       aria-modal="false"
       className={cn(
-        "slide-in-from-bottom fixed right-0 bottom-0 left-0 z-50 animate-in duration-300",
+        "fixed inset-x-0 bottom-0 z-50",
         "border-border border-t bg-background/95 shadow-lg backdrop-blur-sm"
       )}
       role="dialog"

@@ -113,7 +113,8 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
+      {/* Clip sideways overflow so a horizontal scrollbar cannot sit under the fixed cookie banner. */}
+      <html className="overflow-x-clip" lang="en" suppressHydrationWarning>
         <body className={`${fontHeader.variable} ${fontBody.variable} font-sans antialiased`}>
           <ThemeProvider
             attribute="class"
