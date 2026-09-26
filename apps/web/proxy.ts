@@ -9,6 +9,7 @@ const isPublicRoute = createRouteMatcher([
   "/vehicles(.*)",
   "/how-it-works(.*)",
   "/help(.*)",
+  "/faq(.*)",
   "/safety(.*)",
   "/cancellation-policy(.*)",
   "/terms(.*)",

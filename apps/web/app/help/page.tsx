@@ -168,7 +168,12 @@ export default function HelpPage() {
       <div className="mb-16 text-center">
         <h1 className="mb-4 font-bold text-3xl md:text-4xl lg:text-5xl">Help Center</h1>
         <p className="mx-auto max-w-2xl text-muted-foreground text-xl">
-          Find answers to common questions and learn how to make the most of Renegade
+          Find answers to common questions and learn how to make the most of Renegade. For how to
+          request a car, list one, connect Stripe, and cancel, start with the{" "}
+          <Link className="font-medium text-foreground underline" href="/faq">
+            FAQ
+          </Link>
+          .
         </p>
       </div>
 
