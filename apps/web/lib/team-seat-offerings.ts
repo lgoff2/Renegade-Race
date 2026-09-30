@@ -18,6 +18,7 @@ export type TeamSeatOfferingView = {
   }
   event: {
     _id: Id<"raceEvents">
+    seriesId?: Id<"raceSeries">
     name: string
     startDate: string
     endDate: string

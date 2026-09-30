@@ -26,6 +26,7 @@ import {
   Settings,
   Shield,
   Star,
+  Trophy,
   User,
   Users,
 } from "lucide-react"
@@ -43,6 +44,7 @@ const navigation = [
   { name: "User Management", href: "/users", icon: Users },
   { name: "Track Management", href: "/tracks", icon: MapPin },
   { name: "Coaching", href: "/coaching/coaches", icon: GraduationCap },
+  { name: "Race results", href: "/results", icon: Trophy },
   { name: "Disputes", href: "/disputes", icon: Shield },
   { name: "Damage Claims", href: "/damage-invoices", icon: AlertTriangle },
   { name: "Direct Messages", href: "/messages", icon: MessageSquare },

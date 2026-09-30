@@ -42,6 +42,7 @@ export const create = mutation({
       website: args.website ? sanitizeShortText(args.website) : undefined,
       logoUrl: args.logoUrl,
       isActive: true,
+      showPublicResults: true,
       createdByUserId: identity.subject,
       createdByTeamId: team?._id,
       createdAt: now,

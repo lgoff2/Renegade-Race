@@ -1217,6 +1217,11 @@ export default defineSchema({
     website: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
     isActive: v.boolean(),
+    // Public team pages hide this series' reliability stats when false.
+    // Missing means shown (existing series stay public).
+    showPublicResults: v.optional(v.boolean()),
+    // Optional override of DEFAULT_DNF_LAP_FRACTION (0–1). Missing uses 0.7.
+    dnfLapThreshold: v.optional(v.number()),
     createdByUserId: v.string(),
     createdByTeamId: v.optional(v.id("teams")),
     createdAt: v.number(),
@@ -1371,6 +1376,71 @@ export default defineSchema({
     .index("by_stripe_deposit_payment_intent", ["stripeDepositPaymentIntentId"])
     .index("by_stripe_balance_checkout_session", ["stripeBalanceCheckoutSessionId"])
     .index("by_stripe_balance_payment_intent", ["stripeBalancePaymentIntentId"]),
+
+  // Imported timing results. Separate from seat-calendar `raceEvents`.
+  timingSessions: defineTable({
+    source: v.union(v.literal("speedhive"), v.literal("csv")),
+    seriesId: v.id("raceSeries"),
+    externalEventId: v.optional(v.string()),
+    externalSessionId: v.optional(v.string()),
+    eventName: v.string(),
+    sessionName: v.string(),
+    trackName: v.string(),
+    date: v.string(),
+    resultStatus: v.union(v.literal("official"), v.literal("provisional")),
+    sourceUrl: v.string(),
+    importedAt: v.number(),
+    importedBy: v.string(),
+    raceEventId: v.optional(v.id("raceEvents")),
+  })
+    .index("by_source_external_session", ["source", "externalSessionId"])
+    .index("by_series", ["seriesId"])
+    .index("by_race_event", ["raceEventId"]),
+
+  sessionEntries: defineTable({
+    sessionId: v.id("timingSessions"),
+    seriesId: v.id("raceSeries"),
+    carNumber: v.string(),
+    teamNameRaw: v.string(),
+    vehicleRaw: v.optional(v.string()),
+    class: v.string(),
+    posOverall: v.number(),
+    posInClass: v.number(),
+    laps: v.number(),
+    statusRaw: v.string(),
+    transponder: v.optional(v.string()),
+    classStarters: v.number(),
+    classWinnerLaps: v.number(),
+    finishPctile: v.number(),
+    lapsPctClassWinner: v.number(),
+    isStart: v.boolean(),
+    isDnf: v.boolean(),
+    dnfReason: v.optional(v.union(v.literal("status"), v.literal("laps"))),
+    teamId: v.optional(v.id("teams")),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_team", ["teamId"])
+    .index("by_series_car", ["seriesId", "carNumber"]),
+
+  teamResultLinks: defineTable({
+    teamId: v.id("teams"),
+    seriesId: v.id("raceSeries"),
+    carNumber: v.string(),
+    nameAliases: v.array(v.string()),
+    transponders: v.array(v.string()),
+    // Entry ids the team confirmed or rejected. Re-import updates entries in
+    // place so these ids stay valid.
+    confirmedEntryIds: v.optional(v.array(v.id("sessionEntries"))),
+    rejectedEntryIds: v.optional(v.array(v.id("sessionEntries"))),
+    status: v.union(v.literal("pending"), v.literal("verified"), v.literal("rejected")),
+    verifiedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId"])
+    .index("by_team_series", ["teamId", "seriesId"])
+    .index("by_status", ["status"])
+    .index("by_series_car", ["seriesId", "carNumber"]),
 
   // Webhook idempotency tracking
   webhookEvents: defineTable({

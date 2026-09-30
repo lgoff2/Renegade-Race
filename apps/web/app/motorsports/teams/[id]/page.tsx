@@ -40,6 +40,8 @@ import { ProfileAnalytics } from "@/components/profile-analytics"
 import { TeamApplicationForm } from "@/components/team-application-form"
 import { TeamCalendar } from "@/components/team-calendar"
 import { TeamCard } from "@/components/team-card"
+import { TeamReliability } from "@/components/team-reliability"
+import { TeamResultClaims } from "@/components/team-result-claims"
 import { TeamRoster } from "@/components/team-roster"
 import { TeamSeatOfferings } from "@/components/team-seat-offerings"
 import type { Id } from "@/lib/convex"
@@ -404,6 +406,10 @@ export default function TeamDetailPage({ params }: TeamDetailPageProps) {
           <TeamRoster isOwner={isOwner} teamId={teamId} />
 
           <TeamCalendar isOwner={isOwner} teamId={teamId} />
+
+          <TeamReliability teamId={teamId} />
+
+          <TeamResultClaims teamId={teamId} />
 
           <TeamSeatOfferings isOwner={isOwner} teamId={teamId} />
 

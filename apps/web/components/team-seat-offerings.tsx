@@ -26,6 +26,7 @@ import { type ReactNode, useState } from "react"
 import { toast } from "sonner"
 import { api, type Id } from "@/lib/convex"
 import { handleErrorWithContext } from "@/lib/error-handler"
+import { classesMatch, reliabilitySummaryLine } from "@/lib/reliability"
 import {
   formatSeatPrice,
   seatAvailabilityLabel,
@@ -40,6 +41,7 @@ type TeamSeatOfferingCardProps = {
   offering: TeamSeatOfferingView
   canManage: boolean
   isUpdating?: boolean
+  reliabilityLine?: string
   onRequest?: (offering: TeamSeatOfferingView) => void
   onToggleActive?: (offering: TeamSeatOfferingView) => void
 }
@@ -61,6 +63,7 @@ export function TeamSeatOfferingCard({
   offering,
   canManage,
   isUpdating = false,
+  reliabilityLine,
   onRequest,
   onToggleActive,
 }: TeamSeatOfferingCardProps) {
@@ -77,6 +80,7 @@ export function TeamSeatOfferingCard({
             <p className="mt-1 text-muted-foreground text-sm">
               {offering.event?.name ?? "Race event"}
             </p>
+            {reliabilityLine && <p className="mt-2 text-sm">{reliabilityLine}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
             {!offering.isActive && <Badge variant="secondary">Unpublished</Badge>}
@@ -165,6 +169,29 @@ export function TeamSeatOfferingCard({
   )
 }
 
+function reliabilityLineFor(
+  offering: TeamSeatOfferingView,
+  groups:
+    | Array<{
+        seriesId: string
+        seriesName: string
+        className: string
+        starts: number
+        dnfs: number
+        avgLapsPct: number
+        typicalFinishLabel: string
+      }>
+    | undefined
+) {
+  const seriesId = offering.event?.seriesId
+  const carClass = offering.teamCar?.carClass
+  if (!(seriesId && carClass && groups)) return
+  const match = groups.find(
+    (group) => group.seriesId === seriesId && classesMatch(group.className, carClass)
+  )
+  return match ? reliabilitySummaryLine(match) : undefined
+}
+
 type TeamSeatOfferingsProps = {
   teamId: Id<"teams">
   isOwner: boolean
@@ -192,6 +219,7 @@ export function TeamSeatOfferings({ teamId, isOwner }: TeamSeatOfferingsProps) {
     teamId,
     includeInactive: isOwner,
   })
+  const reliability = useQuery(api.reliability.getForTeam, { teamId })
   const upcomingEventsResult = useQuery(api.raceEvents.listUpcoming, {})
   const currentUser = useQuery(api.users.current)
   const pendingBookings = useQuery(
@@ -303,6 +331,7 @@ export function TeamSeatOfferings({ teamId, isOwner }: TeamSeatOfferingsProps) {
             offering={offering}
             onRequest={handleRequest}
             onToggleActive={handleToggleActive}
+            reliabilityLine={reliabilityLineFor(offering, reliability)}
           />
         ))}
       </div>
