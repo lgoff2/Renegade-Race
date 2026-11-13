@@ -107,6 +107,7 @@ export default function EditVehiclePage() {
     model: "",
     year: 0,
     dailyRate: 0,
+    damageDepositAmount: 0,
     description: "",
     horsepower: 0,
     transmission: "",
@@ -133,6 +134,9 @@ export default function EditVehiclePage() {
         model: vehicle.model || "",
         year: vehicle.year || 0,
         dailyRate: vehicle.dailyRate || 0,
+        damageDepositAmount: vehicle.damageDepositAmount
+          ? Math.round(vehicle.damageDepositAmount / 100)
+          : 0,
         description: vehicle.description || "",
         horsepower: vehicle.horsepower || 0,
         transmission: vehicle.transmission || "",
@@ -197,7 +201,11 @@ export default function EditVehiclePage() {
     setFormData({
       ...formData,
       [name]:
-        name === "year" || name === "dailyRate" || name === "horsepower" || name === "mileage"
+        name === "year" ||
+        name === "dailyRate" ||
+        name === "damageDepositAmount" ||
+        name === "horsepower" ||
+        name === "mileage"
           ? value === ""
             ? ""
             : Number(value)
@@ -501,6 +509,9 @@ export default function EditVehiclePage() {
         model: formData.model || undefined,
         year: formData.year || undefined,
         dailyRate: formData.dailyRate || undefined,
+        damageDepositAmount: formData.damageDepositAmount
+          ? formData.damageDepositAmount * 100
+          : undefined,
         description: formData.description || undefined,
         horsepower: formData.horsepower || undefined,
         transmission: formData.transmission || undefined,
@@ -823,6 +834,21 @@ export default function EditVehiclePage() {
                   type="number"
                   value={formData.dailyRate}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="damageDepositAmount">ACH Damage Deposit ($)</Label>
+                <Input
+                  id="damageDepositAmount"
+                  min="0"
+                  name="damageDepositAmount"
+                  onChange={handleChange}
+                  placeholder="Optional"
+                  type="number"
+                  value={formData.damageDepositAmount}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Collected only when an invoice is paid with ACH/debit.
+                </p>
               </div>
             </div>
 

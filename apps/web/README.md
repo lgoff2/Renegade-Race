@@ -1,68 +1,53 @@
-# Renegade Rentals - Web Application
+# Renegade Race Rentals — Web Application
 
-Track car rental platform built with Next.js 15, Clerk authentication, and a modern UI.
+The customer-facing web app for **Renegade Race Rentals**, a digital paddock where motorsports professionals (drivers, teams, coaches, crew, vehicle owners, sponsors) discover each other, talk, agree, and pay — all in one place. Track-car rentals and coaching are features inside the social platform, not the platform itself.
 
-## Project Structure
+## Information architecture
 
-### Pages
+| Section | Path | Purpose |
+|---------|------|---------|
+| Paddock | `/paddock` | Social feed: posts, follows, activity from across the platform |
+| People | `/motorsports` | Discover drivers, teams, and coaches |
+| Garage | `/vehicles` | Browse rentable track vehicles |
+| Coaching | `/coaches` | Book paid driver coaching sessions |
+| Deals | `/deals` | Custom invoices, e-signed contracts, agreements |
 
-- **Home** (`/`) - Hero section, featured vehicles, categories
-- **Sign In** (`/sign-in`) - Clerk authentication
-- **Sign Up** (`/sign-up`) - Clerk registration
-- **Reset Password** (`/reset-password`) - Password recovery
-- **Vehicle Search** (`/vehicles`) - Search with filters and sorting
-- **Vehicle Details** (`/vehicles/[id]`) - Detailed view with booking
-- **Messages** (`/messages`) - Messaging interface
-- **Profile** (`/profile`) - User dashboard with trips/favorites/reviews
-- **Settings** (`/profile/settings`) - Account settings
+## Tech stack
 
-### Components
-
-- `Navigation` - Header with auth integration
-- `Footer` - Site footer
-- `VehicleCard` - Vehicle listing card
-
-### Authentication
-
-Uses Clerk for authentication:
-- Sign in/Sign up flows
-- Protected routes via middleware
-- User profile management
-
-## Getting Started
-
-1. Install dependencies:
-```bash
-pnpm install
-```
-
-2. Set up environment variables in `.env.local`:
-```env
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_key_here
-CLERK_SECRET_KEY=your_secret_here
-NEXT_PUBLIC_CONVEX_URL=your_convex_url
-```
-
-3. Run development server:
-```bash
-pnpm dev
-```
-
-## Next Steps
-
-- Connect to Convex backend for data fetching
-- Integrate Clerk user data with Convex
-- Add booking functionality
-- Implement messaging features
-- Connect to payment processing
-
-## Tech Stack
-
-- Next.js 15 (App Router)
+- Next.js 16 (App Router) + React 19
 - TypeScript 5.7+
-- React 19
-- Clerk (Authentication)
-- Tailwind CSS v4
-- shadcn/ui components
-- Biome (Linting & Formatting)
+- Convex (database + serverless backend)
+- Clerk (authentication)
+- Stripe Connect (marketplace payouts) + Stripe Billing (subscriptions) + Stripe ACH (high-value invoices)
+- Cloudflare R2 + ImageKit (images)
+- Resend (email) + Documenso (e-signatures, scaffolded)
+- Tailwind CSS v4 + shadcn/ui
+- Biome (lint + format)
 
+## Local development
+
+1. Install dependencies (from repo root):
+
+   ```bash
+   pnpm install
+   ```
+
+2. Set up `.env.local` (see `.env.example` for the full list):
+
+   ```env
+   NEXT_PUBLIC_CONVEX_URL=...
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+   CLERK_SECRET_KEY=...
+   NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT=...
+   NEXT_PUBLIC_SENTRY_DSN=...
+   ```
+
+3. Run the dev server (from repo root):
+
+   ```bash
+   pnpm dev:web
+   ```
+
+## Roadmap
+
+The long-term roadmap is in [`docs/ROADMAP.md`](../../docs/ROADMAP.md) at the repo root.

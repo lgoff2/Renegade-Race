@@ -15,13 +15,16 @@ import { useQuery } from "convex/react"
 import {
   Calendar,
   Car,
+  FileText,
   GraduationCap,
   Heart,
+  Home,
   LogOut,
   Menu,
   MessageSquare,
   Settings,
   User,
+  Users,
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -182,11 +185,14 @@ function MobileSidebar() {
                 <Link
                   className={cn(
                     sidebarLinkClass,
-                    pathname === "/vehicles" ? "bg-accent text-foreground" : "text-muted-foreground"
+                    pathname === "/paddock" || pathname?.startsWith("/paddock")
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground"
                   )}
-                  href="/vehicles"
+                  href="/paddock"
                 >
-                  Vehicles
+                  <Home className="size-4" />
+                  Paddock
                 </Link>
               </SheetClose>
               <SheetClose asChild>
@@ -199,7 +205,47 @@ function MobileSidebar() {
                   )}
                   href="/motorsports"
                 >
-                  Motorsports
+                  <Users className="size-4" />
+                  People
+                </Link>
+              </SheetClose>
+              <SheetClose asChild>
+                <Link
+                  className={cn(
+                    sidebarLinkClass,
+                    pathname === "/vehicles" ? "bg-accent text-foreground" : "text-muted-foreground"
+                  )}
+                  href="/vehicles"
+                >
+                  <Car className="size-4" />
+                  Garage
+                </Link>
+              </SheetClose>
+              <SheetClose asChild>
+                <Link
+                  className={cn(
+                    sidebarLinkClass,
+                    pathname === "/coaches" || pathname?.startsWith("/coaches")
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground"
+                  )}
+                  href="/coaches"
+                >
+                  Coaching
+                </Link>
+              </SheetClose>
+              <SheetClose asChild>
+                <Link
+                  className={cn(
+                    sidebarLinkClass,
+                    pathname === "/deals" || pathname?.startsWith("/deals")
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground"
+                  )}
+                  href="/deals"
+                >
+                  <FileText className="size-4" />
+                  Deals
                 </Link>
               </SheetClose>
               <SheetClose asChild>
@@ -380,6 +426,82 @@ export function Navigation() {
               </span>
             </Link>
             <div className="hidden items-center gap-8 md:flex">
+              <Link
+                className={cn(
+                  "font-medium text-sm transition-colors hover:text-foreground",
+                  pathname === "/paddock" || pathname?.startsWith("/paddock")
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                )}
+                href="/paddock"
+              >
+                Paddock
+              </Link>
+              <Link
+                className={cn(
+                  "font-medium text-sm transition-colors hover:text-foreground",
+                  pathname === "/motorsports" || pathname?.startsWith("/motorsports")
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                )}
+                href="/motorsports"
+              >
+                People
+              </Link>
+              <Link
+                className={cn(
+                  "font-medium text-sm transition-colors hover:text-foreground",
+                  pathname === "/vehicles" ? "text-foreground" : "text-muted-foreground"
+                )}
+                href="/vehicles"
+              >
+                Garage
+              </Link>
+              <Link
+                className={cn(
+                  "font-medium text-sm transition-colors hover:text-foreground",
+                  pathname === "/coaches" || pathname?.startsWith("/coaches")
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                )}
+                href="/coaches"
+              >
+                Coaching
+              </Link>
+              <Link
+                className={cn(
+                  "font-medium text-sm transition-colors hover:text-foreground",
+                  pathname === "/deals" || pathname?.startsWith("/deals")
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                )}
+                href="/deals"
+              >
+                Deals
+              </Link>
+              {isSignedIn && (
+                <>
+                  <Separator className="h-5" orientation="vertical" />
+                  <Link
+                    className={cn(
+                      "font-medium text-sm transition-colors hover:text-foreground",
+                      pathname === "/trips" ? "text-foreground" : "text-muted-foreground"
+                    )}
+                    href="/trips"
+                  >
+                    Trips
+                  </Link>
+                  <Link
+                    className={cn(
+                      "font-medium text-sm transition-colors hover:text-foreground",
+                      pathname === "/favorites" ? "text-foreground" : "text-muted-foreground"
+                    )}
+                    href="/favorites"
+                  >
+                    Favorites
+                  </Link>
+                </>
+              )}
               {NAV_LINKS.map((link) => (
                 <Link
                   className={cn(

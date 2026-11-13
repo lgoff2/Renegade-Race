@@ -72,6 +72,20 @@ registerRoutes(http, components.stripe, {
             stripePaymentIntentId: paymentIntent.id,
           })
         }
+      } else if (paymentIntent.metadata?.type === "custom_invoice") {
+        const invoiceId = paymentIntent.metadata.invoiceId
+        if (invoiceId) {
+          const invoice = await ctx.runQuery(internal.invoices.getRawById, {
+            invoiceId: invoiceId as any,
+          })
+          if (invoice?.stripeInvoiceId) {
+            await ctx.runMutation(internal.invoices.handleStripeInvoicePaid, {
+              stripeInvoiceId: invoice.stripeInvoiceId,
+              stripePaymentIntentId: paymentIntent.id,
+              stripeChargeId: (paymentIntent.latest_charge as string) || undefined,
+            })
+          }
+        }
       } else if (paymentIntent.metadata?.type === "coaching_booking") {
         // Handle coaching booking payment
         const bookingId = paymentIntent.metadata.coachingBookingId
@@ -133,9 +147,37 @@ registerRoutes(http, components.stripe, {
             failureReason: paymentIntent.last_payment_error?.message,
           })
         }
+      } else {
+        await ctx.runMutation(internal.invoices.handlePaymentFailed, {
+          stripePaymentIntentId: paymentIntent.id,
+          failureReason: paymentIntent.last_payment_error?.message,
+        })
       }
 
       // Record successful processing
+      await ctx.runMutation(internal.webhookIdempotency.recordWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+        eventType: event.type,
+      })
+    },
+
+    // ACH Direct Debit can enter processing before final success or late failure.
+    "payment_intent.processing": async (ctx, event: Stripe.PaymentIntentProcessingEvent) => {
+      const alreadyProcessed = await ctx.runQuery(internal.webhookIdempotency.checkWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+      })
+
+      if (alreadyProcessed) {
+        return
+      }
+
+      const paymentIntent = event.data.object
+      await ctx.runMutation(internal.invoices.handlePaymentProcessing, {
+        stripePaymentIntentId: paymentIntent.id,
+      })
+
       await ctx.runMutation(internal.webhookIdempotency.recordWebhookEvent, {
         eventId: event.id,
         source: "stripe",
@@ -442,6 +484,111 @@ registerRoutes(http, components.stripe, {
       })
 
       // Record successful processing
+      await ctx.runMutation(internal.webhookIdempotency.recordWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+        eventType: event.type,
+      })
+    },
+
+    "invoice.paid": async (ctx, event: Stripe.InvoicePaidEvent) => {
+      const alreadyProcessed = await ctx.runQuery(internal.webhookIdempotency.checkWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+      })
+
+      if (alreadyProcessed) {
+        return
+      }
+
+      const invoice = event.data.object as Stripe.Invoice & {
+        payment_intent?: string | { id?: string } | null
+        charge?: string | { id?: string } | null
+      }
+      await ctx.runMutation(internal.invoices.handleStripeInvoicePaid, {
+        stripeInvoiceId: invoice.id as string,
+        stripePaymentIntentId:
+          typeof invoice.payment_intent === "string"
+            ? invoice.payment_intent
+            : invoice.payment_intent?.id,
+        stripeChargeId:
+          typeof invoice.charge === "string" ? invoice.charge : invoice.charge?.id || undefined,
+      })
+
+      await ctx.runMutation(internal.webhookIdempotency.recordWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+        eventType: event.type,
+      })
+    },
+
+    "invoice.payment_failed": async (ctx, event: Stripe.InvoicePaymentFailedEvent) => {
+      const alreadyProcessed = await ctx.runQuery(internal.webhookIdempotency.checkWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+      })
+
+      if (alreadyProcessed) {
+        return
+      }
+
+      const invoice = event.data.object as Stripe.Invoice & {
+        payment_intent?: string | { id?: string } | null
+      }
+      const paymentIntentId =
+        typeof invoice.payment_intent === "string"
+          ? invoice.payment_intent
+          : invoice.payment_intent?.id
+      if (paymentIntentId) {
+        await ctx.runMutation(internal.invoices.handlePaymentFailed, {
+          stripePaymentIntentId: paymentIntentId,
+        })
+      }
+
+      await ctx.runMutation(internal.webhookIdempotency.recordWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+        eventType: event.type,
+      })
+    },
+
+    "invoice.voided": async (ctx, event: Stripe.InvoiceVoidedEvent) => {
+      const alreadyProcessed = await ctx.runQuery(internal.webhookIdempotency.checkWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+      })
+
+      if (alreadyProcessed) {
+        return
+      }
+
+      await ctx.runMutation(internal.invoices.handleInvoiceTerminalStatus, {
+        stripeInvoiceId: event.data.object.id as string,
+        status: "cancelled",
+      })
+
+      await ctx.runMutation(internal.webhookIdempotency.recordWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+        eventType: event.type,
+      })
+    },
+
+    "invoice.marked_uncollectible": async (ctx, event: Stripe.InvoiceMarkedUncollectibleEvent) => {
+      const alreadyProcessed = await ctx.runQuery(internal.webhookIdempotency.checkWebhookEvent, {
+        eventId: event.id,
+        source: "stripe",
+      })
+
+      if (alreadyProcessed) {
+        return
+      }
+
+      await ctx.runMutation(internal.invoices.handleInvoiceTerminalStatus, {
+        stripeInvoiceId: event.data.object.id as string,
+        status: "overdue",
+      })
+
       await ctx.runMutation(internal.webhookIdempotency.recordWebhookEvent, {
         eventId: event.id,
         source: "stripe",

@@ -60,13 +60,13 @@ describe("User onboarding — sign up page", () => {
     vi.clearAllMocks()
   })
 
-  it("renders the hero and registration form", () => {
+  it("renders the registration form", () => {
     render(<SignUpPage />)
 
+    expect(screen.getByRole("heading", { name: "Create your account" })).toBeInTheDocument()
     expect(
-      screen.getByRole("heading", { name: "Experience the ultimate thrill of racing" })
+      screen.getByText("Join Renegade and start renting high-performance track cars")
     ).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Create Your Account" })).toBeInTheDocument()
     expect(screen.getByLabelText("First Name")).toBeInTheDocument()
     expect(screen.getByLabelText("Last Name")).toBeInTheDocument()
     expect(screen.getByLabelText("Email")).toBeInTheDocument()

@@ -10,6 +10,7 @@ export const create = internalMutation({
       v.literal("vehicle"),
       v.literal("dispute"),
       v.literal("damage_invoice"),
+      v.literal("invoice"),
       v.literal("coach_profile"),
       v.literal("coaching_booking"),
       v.literal("coaching_review"),

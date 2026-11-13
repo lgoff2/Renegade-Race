@@ -150,6 +150,7 @@ export default defineSchema({
     model: v.string(),
     year: v.number(),
     dailyRate: v.number(),
+    damageDepositAmount: v.optional(v.number()), // Refundable deposit in cents for ACH/debit invoice payments
     description: v.string(),
     horsepower: v.optional(v.number()),
     transmission: v.optional(v.string()),
@@ -376,6 +377,14 @@ export default defineSchema({
     name: v.string(),
     description: v.string(),
     logoUrl: v.optional(v.string()),
+    /** R2 key for team cover/banner image (Phase 1b). */
+    coverImageR2Key: v.optional(v.string()),
+    /** Year the team was founded (Phase 1b). */
+    foundedYear: v.optional(v.number()),
+    /** Team principal name (Phase 1b). */
+    principal: v.optional(v.string()),
+    /** Sponsor brand list (Phase 1b). */
+    sponsors: v.optional(v.array(v.string())),
     logoR2Key: v.optional(v.string()),
     location: v.string(),
     racingType: v.optional(
@@ -410,6 +419,14 @@ export default defineSchema({
   driverProfiles: defineTable({
     userId: v.string(),
     avatarUrl: v.optional(v.string()),
+    /** R2 key for cover/banner image (Phase 1b). */
+    coverImageR2Key: v.optional(v.string()),
+    /** R2 key for helmet design (Phase 1b). */
+    helmetDesignR2Key: v.optional(v.string()),
+    pronouns: v.optional(v.string()),
+    /** Free-form career highlights bulleted by the driver (Phase 1b). */
+    careerHighlights: v.optional(v.array(v.string())),
+    videoReelUrl: v.optional(v.string()),
     headline: v.optional(v.string()),
     bio: v.string(),
     achievements: v.optional(v.string()),
@@ -809,6 +826,7 @@ export default defineSchema({
       v.literal("vehicle"),
       v.literal("dispute"),
       v.literal("damage_invoice"),
+      v.literal("invoice"),
       v.literal("coach_profile"),
       v.literal("coaching_booking"),
       v.literal("coaching_review"),
@@ -868,6 +886,7 @@ export default defineSchema({
       v.literal("team_event"),
       v.literal("profile_view"),
       v.literal("damage_invoice"),
+      v.literal("invoice"),
       v.literal("coaching_request_pending"),
       v.literal("coaching_approved"),
       v.literal("coaching_declined"),
@@ -1055,6 +1074,549 @@ export default defineSchema({
     .index("by_category", ["category"])
     .index("by_user_category", ["userId", "category"]),
 
+  // ============================================================
+  // Paddock — social feed (Phase 1a)
+  // ============================================================
+
+  /** Posts authored by users (text + optional media + optional location/track tag). */
+  posts: defineTable({
+    authorId: v.string(),
+    /** Posting on behalf of a team (or null = personal). */
+    teamId: v.optional(v.id("teams")),
+    content: v.string(),
+    /** Optional structured tags surfaced in the feed. */
+    trackId: v.optional(v.id("tracks")),
+    vehicleId: v.optional(v.id("vehicles")),
+    /** R2 keys for attached media. */
+    mediaR2Keys: v.optional(v.array(v.string())),
+    mediaType: v.optional(v.union(v.literal("image"), v.literal("video"), v.literal("mixed"))),
+    /** Featured boost (Phase 3). */
+    featuredUntil: v.optional(v.number()),
+    /** Cached counters for fast feed rendering. */
+    reactionCount: v.optional(v.number()),
+    commentCount: v.optional(v.number()),
+    /** Soft delete. */
+    isDeleted: v.optional(v.boolean()),
+    deletedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_author", ["authorId"])
+    .index("by_team", ["teamId"])
+    .index("by_track", ["trackId"])
+    .index("by_created", ["createdAt"])
+    .index("by_featured", ["featuredUntil"])
+    .index("by_author_created", ["authorId", "createdAt"]),
+
+  postReactions: defineTable({
+    postId: v.id("posts"),
+    userId: v.string(),
+    type: v.union(
+      v.literal("like"),
+      v.literal("fire"),
+      v.literal("checkered"),
+      v.literal("clap"),
+      v.literal("respect")
+    ),
+    createdAt: v.number(),
+  })
+    .index("by_post", ["postId"])
+    .index("by_user", ["userId"])
+    .index("by_post_user", ["postId", "userId"]),
+
+  postComments: defineTable({
+    postId: v.id("posts"),
+    authorId: v.string(),
+    content: v.string(),
+    /** Reply threading. */
+    parentCommentId: v.optional(v.id("postComments")),
+    isDeleted: v.optional(v.boolean()),
+    createdAt: v.number(),
+  })
+    .index("by_post", ["postId"])
+    .index("by_author", ["authorId"])
+    .index("by_post_created", ["postId", "createdAt"]),
+
+  /** Bidirectional follows: user → user, user → team. Profile follows handled via the target user. */
+  follows: defineTable({
+    followerId: v.string(),
+    followedUserId: v.optional(v.string()),
+    followedTeamId: v.optional(v.id("teams")),
+    createdAt: v.number(),
+  })
+    .index("by_follower", ["followerId"])
+    .index("by_followed_user", ["followedUserId"])
+    .index("by_followed_team", ["followedTeamId"])
+    .index("by_follower_user", ["followerId", "followedUserId"])
+    .index("by_follower_team", ["followerId", "followedTeamId"]),
+
+  /** System-generated activity events that flow into the Paddock feed. */
+  activityEvents: defineTable({
+    actorId: v.string(),
+    type: v.union(
+      v.literal("driver_joined_team"),
+      v.literal("driver_endorsed"),
+      v.literal("team_event_created"),
+      v.literal("coach_listing_created"),
+      v.literal("vehicle_listed"),
+      v.literal("race_result_posted"),
+      v.literal("user_verified"),
+      v.literal("post_created")
+    ),
+    /** Optional link target for the activity card. */
+    targetType: v.optional(
+      v.union(
+        v.literal("user"),
+        v.literal("team"),
+        v.literal("vehicle"),
+        v.literal("post"),
+        v.literal("race_result"),
+        v.literal("coach_service"),
+        v.literal("team_event")
+      )
+    ),
+    targetId: v.optional(v.string()),
+    /** Free-form payload for rendering specifics. */
+    metadata: v.optional(v.any()),
+    /** Visibility — `public` shows in global feed, `followers` shows only to followers. */
+    visibility: v.union(v.literal("public"), v.literal("followers")),
+    createdAt: v.number(),
+  })
+    .index("by_actor", ["actorId"])
+    .index("by_created", ["createdAt"])
+    .index("by_actor_created", ["actorId", "createdAt"])
+    .index("by_visibility_created", ["visibility", "createdAt"]),
+
+  // ============================================================
+  // Universal invoices (Phase 1c) — supersedes coachInvoices + damageInvoices
+  // ============================================================
+
+  invoices: defineTable({
+    senderId: v.string(),
+    recipientId: v.string(),
+    /** Optional team that issued the invoice. */
+    senderTeamId: v.optional(v.id("teams")),
+    title: v.string(),
+    description: v.optional(v.string()),
+    /** Line items in cents. */
+    lineItems: v.array(
+      v.object({
+        description: v.string(),
+        quantity: v.number(),
+        unitAmount: v.number(),
+        amount: v.number(),
+      })
+    ),
+    /** Totals in cents. */
+    subtotal: v.number(),
+    taxAmount: v.optional(v.number()),
+    discountAmount: v.optional(v.number()),
+    total: v.number(),
+    currency: v.string(),
+    /** Allowed payment methods on the checkout. */
+    paymentMethods: v.array(
+      v.union(v.literal("stripe_card"), v.literal("stripe_ach"), v.literal("external"))
+    ),
+    /** Optional related entity for context. */
+    relatedEntity: v.optional(
+      v.object({
+        type: v.union(
+          v.literal("vehicle"),
+          v.literal("rental"),
+          v.literal("coaching"),
+          v.literal("damage"),
+          v.literal("contract"),
+          v.literal("sponsorship"),
+          v.literal("other")
+        ),
+        id: v.string(),
+      })
+    ),
+    /** Optional document attached for e-sign (Phase 1d). */
+    documentId: v.optional(v.id("documents")),
+    /** Vehicle whose owner-defined damage deposit applies when paying by ACH/debit. */
+    depositVehicleId: v.optional(v.id("vehicles")),
+    /** Stripe + checkout state. */
+    stripeInvoiceId: v.optional(v.string()),
+    stripeCheckoutSessionId: v.optional(v.string()),
+    stripeCheckoutUrl: v.optional(v.string()),
+    stripeInvoicePdf: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeChargeId: v.optional(v.string()),
+    selectedPaymentMethod: v.optional(
+      v.union(v.literal("stripe_card"), v.literal("stripe_ach"), v.literal("external"))
+    ),
+    amountDue: v.optional(v.number()),
+    /** Snapshot of Renegade platform fee in cents (not the card processing pass-through). */
+    platformFee: v.optional(v.number()),
+    /** Estimated Stripe card fee paid by the payer, in cents. ACH payments store 0. */
+    processingFee: v.optional(v.number()),
+    /** Sender → owner of money received (in cents, after platform fee, including any deposit). */
+    senderAmount: v.optional(v.number()),
+    damageDepositAmount: v.optional(v.number()),
+    depositStatus: v.optional(
+      v.union(
+        v.literal("not_required"),
+        v.literal("pending"),
+        v.literal("held"),
+        v.literal("partially_refunded"),
+        v.literal("refunded"),
+        v.literal("applied")
+      )
+    ),
+    depositRefundAmount: v.optional(v.number()),
+    depositRefundReason: v.optional(v.string()),
+    stripeDepositRefundId: v.optional(v.string()),
+    depositRefundedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("sent"),
+      v.literal("viewed"),
+      v.literal("payment_pending"),
+      v.literal("processing"),
+      v.literal("paid"),
+      v.literal("overdue"),
+      v.literal("cancelled"),
+      v.literal("refunded")
+    ),
+    dueDate: v.optional(v.string()),
+    paidAt: v.optional(v.number()),
+    sentAt: v.optional(v.number()),
+    viewedAt: v.optional(v.number()),
+    /** Source legacy table during migration window (Phase 1c). */
+    legacySource: v.optional(v.union(v.literal("coachInvoices"), v.literal("damageInvoices"))),
+    legacyId: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_sender", ["senderId"])
+    .index("by_recipient", ["recipientId"])
+    .index("by_status", ["status"])
+    .index("by_sender_status", ["senderId", "status"])
+    .index("by_recipient_status", ["recipientId", "status"])
+    .index("by_stripe_checkout_session", ["stripeCheckoutSessionId"])
+    .index("by_stripe_payment_intent", ["stripePaymentIntentId"])
+    .index("by_legacy", ["legacySource", "legacyId"]),
+
+  // ============================================================
+  // E-signature documents (Phase 1d)
+  // ============================================================
+
+  /** A document template (e.g. Standard Coaching Agreement). */
+  documentTemplates: defineTable({
+    name: v.string(),
+    category: v.union(
+      v.literal("rental_agreement"),
+      v.literal("coaching_agreement"),
+      v.literal("driver_team_contract"),
+      v.literal("nda"),
+      v.literal("sponsorship_mou"),
+      v.literal("custom")
+    ),
+    /** Markdown body with `{{placeholder}}` tokens. */
+    bodyMarkdown: v.string(),
+    /** Placeholder names the template expects to be filled. */
+    placeholders: v.array(v.string()),
+    isActive: v.boolean(),
+    /** Owner: null = global/system template. */
+    ownerId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_category", ["category"])
+    .index("by_owner", ["ownerId"])
+    .index("by_active", ["isActive"]),
+
+  /** A document instance — created from a template, sent to one or more signers. */
+  documents: defineTable({
+    templateId: v.optional(v.id("documentTemplates")),
+    title: v.string(),
+    /** Resolved markdown after placeholder substitution. */
+    bodyMarkdown: v.string(),
+    /** Optional rendered PDF stored in R2. */
+    renderedPdfR2Key: v.optional(v.string()),
+    senderId: v.string(),
+    /** Required signers (ordered). */
+    signers: v.array(
+      v.object({
+        userId: v.string(),
+        name: v.string(),
+        email: v.string(),
+        order: v.number(),
+      })
+    ),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("sent"),
+      v.literal("partially_signed"),
+      v.literal("completed"),
+      v.literal("voided"),
+      v.literal("expired")
+    ),
+    /** External provider ID when using Documenso/Dropbox Sign (Phase 1d v2). */
+    externalProvider: v.optional(v.union(v.literal("documenso"), v.literal("dropbox_sign"))),
+    externalDocumentId: v.optional(v.string()),
+    /** Linked entities for navigation. */
+    relatedEntity: v.optional(
+      v.object({
+        type: v.union(
+          v.literal("invoice"),
+          v.literal("team_application"),
+          v.literal("reservation"),
+          v.literal("coach_booking")
+        ),
+        id: v.string(),
+      })
+    ),
+    sentAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    voidedAt: v.optional(v.number()),
+    expiresAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_sender", ["senderId"])
+    .index("by_status", ["status"])
+    .index("by_sender_status", ["senderId", "status"])
+    .index("by_external", ["externalProvider", "externalDocumentId"]),
+
+  documentSignatures: defineTable({
+    documentId: v.id("documents"),
+    signerUserId: v.string(),
+    signerName: v.string(),
+    signerEmail: v.string(),
+    /** R2 key of typed/drawn signature image. */
+    signatureImageR2Key: v.optional(v.string()),
+    /** Typed name acceptance. */
+    typedSignature: v.optional(v.string()),
+    ipAddress: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("signed"), v.literal("declined")),
+    signedAt: v.optional(v.number()),
+    declinedAt: v.optional(v.number()),
+    declinedReason: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_document", ["documentId"])
+    .index("by_signer", ["signerUserId"])
+    .index("by_document_signer", ["documentId", "signerUserId"]),
+
+  // ============================================================
+  // Race data (Phase 2a — race-monitor; Phase 2b — iRacing)
+  // ============================================================
+
+  /** A race-monitor (or imported) race event. */
+  raceEvents: defineTable({
+    /** External event ID from race-monitor. */
+    raceMonitorEventId: v.optional(v.string()),
+    name: v.string(),
+    series: v.optional(v.string()),
+    trackId: v.optional(v.id("tracks")),
+    trackName: v.optional(v.string()),
+    location: v.optional(v.string()),
+    startDate: v.string(),
+    endDate: v.optional(v.string()),
+    source: v.union(v.literal("race_monitor"), v.literal("manual"), v.literal("iracing")),
+    isVerified: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_race_monitor", ["raceMonitorEventId"])
+    .index("by_track", ["trackId"])
+    .index("by_start_date", ["startDate"])
+    .index("by_source", ["source"]),
+
+  /** A driver/team result at a race event. */
+  raceResults: defineTable({
+    eventId: v.id("raceEvents"),
+    /** Either a Renegade driverProfileId (claimed result) or a free-form competitor name. */
+    driverProfileId: v.optional(v.id("driverProfiles")),
+    teamId: v.optional(v.id("teams")),
+    competitorName: v.string(),
+    /** External competitor ID from race-monitor. */
+    raceMonitorCompetitorId: v.optional(v.string()),
+    classId: v.optional(v.string()),
+    className: v.optional(v.string()),
+    carNumber: v.optional(v.string()),
+    carModel: v.optional(v.string()),
+    /** Position in class (1-based). */
+    classPosition: v.optional(v.number()),
+    /** Overall finishing position (1-based). */
+    overallPosition: v.optional(v.number()),
+    bestLapTimeMs: v.optional(v.number()),
+    totalTimeMs: v.optional(v.number()),
+    laps: v.optional(v.number()),
+    status: v.optional(v.string()),
+    /** Verified = data pulled from race-monitor; user-claimed link still requires admin verification. */
+    isVerified: v.boolean(),
+    /** Claim provenance. */
+    claimedByUserId: v.optional(v.string()),
+    claimedAt: v.optional(v.number()),
+    verifiedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_driver_profile", ["driverProfileId"])
+    .index("by_team", ["teamId"])
+    .index("by_competitor", ["raceMonitorCompetitorId"])
+    .index("by_event_competitor", ["eventId", "raceMonitorCompetitorId"]),
+
+  /** Per-driver iRacing snapshot, refreshed by cron. */
+  iracingProfiles: defineTable({
+    /** Renegade user ID (Clerk externalId). */
+    userId: v.string(),
+    driverProfileId: v.optional(v.id("driverProfiles")),
+    iracingCustId: v.string(),
+    displayName: v.optional(v.string()),
+    /** Latest snapshot. */
+    irating: v.optional(v.number()),
+    /** Safety rating as the float (e.g. 3.42) plus license letter. */
+    safetyRating: v.optional(v.number()),
+    licenseClass: v.optional(
+      v.union(
+        v.literal("R"),
+        v.literal("D"),
+        v.literal("C"),
+        v.literal("B"),
+        v.literal("A"),
+        v.literal("P")
+      )
+    ),
+    /** OAuth refresh token (encrypted at rest by Convex env). */
+    refreshTokenCipher: v.optional(v.string()),
+    /** Whether the user has authorized iRacing OAuth. */
+    isConnected: v.boolean(),
+    lastSyncedAt: v.optional(v.number()),
+    syncErrorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_iracing_cust", ["iracingCustId"])
+    .index("by_driver_profile", ["driverProfileId"]),
+
+  // ============================================================
+  // Subscriptions + featured listings (Phase 3)
+  // ============================================================
+
+  subscriptions: defineTable({
+    userId: v.string(),
+    /** Optional team subscription. */
+    teamId: v.optional(v.id("teams")),
+    tier: v.union(v.literal("driver_pro"), v.literal("team_pro"), v.literal("team_elite")),
+    status: v.union(
+      v.literal("trialing"),
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("incomplete")
+    ),
+    stripeCustomerId: v.optional(v.string()),
+    stripeSubscriptionId: v.optional(v.string()),
+    stripePriceId: v.optional(v.string()),
+    currentPeriodStart: v.optional(v.number()),
+    currentPeriodEnd: v.optional(v.number()),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_team", ["teamId"])
+    .index("by_stripe_subscription", ["stripeSubscriptionId"])
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_status", ["status"]),
+
+  /** Featured listing boost — paid promotion in feed/search. */
+  featuredBoosts: defineTable({
+    purchaserId: v.string(),
+    targetType: v.union(
+      v.literal("driver"),
+      v.literal("team"),
+      v.literal("vehicle"),
+      v.literal("coach_service"),
+      v.literal("post")
+    ),
+    targetId: v.string(),
+    startsAt: v.number(),
+    endsAt: v.number(),
+    amountCents: v.number(),
+    stripePaymentIntentId: v.optional(v.string()),
+    status: v.union(
+      v.literal("payment_pending"),
+      v.literal("active"),
+      v.literal("expired"),
+      v.literal("cancelled")
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_purchaser", ["purchaserId"])
+    .index("by_target", ["targetType", "targetId"])
+    .index("by_status_endsAt", ["status", "endsAt"])
+    .index("by_status", ["status"]),
+
+  // ============================================================
+  // Phase 4 — verified badges, referrals, sponsor profiles
+  // ============================================================
+
+  verifications: defineTable({
+    userId: v.string(),
+    type: v.union(
+      v.literal("identity"),
+      v.literal("race_monitor"),
+      v.literal("iracing"),
+      v.literal("team_principal"),
+      v.literal("sponsor_brand")
+    ),
+    status: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected")),
+    evidenceR2Keys: v.optional(v.array(v.string())),
+    notes: v.optional(v.string()),
+    reviewedBy: v.optional(v.string()),
+    reviewedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_type", ["userId", "type"])
+    .index("by_status", ["status"]),
+
+  referrals: defineTable({
+    referrerId: v.string(),
+    /** Either an inviter URL code or a recipient user ID once they sign up. */
+    code: v.string(),
+    invitedEmail: v.optional(v.string()),
+    invitedUserId: v.optional(v.string()),
+    /** Cents earned by the referrer; rev-share applied at qualifying event. */
+    earnedCents: v.optional(v.number()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("signed_up"),
+      v.literal("qualified"),
+      v.literal("expired")
+    ),
+    qualifiedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_referrer", ["referrerId"])
+    .index("by_code", ["code"])
+    .index("by_invited_user", ["invitedUserId"])
+    .index("by_status", ["status"]),
+
+  sponsorProfiles: defineTable({
+    userId: v.string(),
+    brandName: v.string(),
+    description: v.optional(v.string()),
+    logoR2Key: v.optional(v.string()),
+    website: v.optional(v.string()),
+    industry: v.optional(v.string()),
+    isVerified: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_brand", ["brandName"])
+    .index("by_verified", ["isVerified"]),
   coachProfiles: defineTable({
     userId: v.string(),
     headline: v.optional(v.string()),

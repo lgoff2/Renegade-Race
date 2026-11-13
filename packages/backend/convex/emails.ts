@@ -1071,6 +1071,161 @@ Renegade Race Rentals
   return { subject, html, text }
 }
 
+export function getCustomInvoiceSentEmailTemplate(data: {
+  recipientName: string
+  senderName: string
+  title: string
+  amount: number
+  invoiceUrl: string
+}): { subject: string; html: string; text: string } {
+  const subject = `Invoice from ${data.senderName}: ${data.title}`
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #1a1a1a;">New Invoice</h1>
+      </div>
+      <p>Hi ${data.recipientName},</p>
+      <p>${data.senderName} sent you an invoice for <strong>${data.title}</strong>.</p>
+      <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Amount:</strong> ${formatCurrency(data.amount / 100)}</p>
+      </div>
+      <p>You can review the invoice and choose card or lower-fee ACH Direct Debit before payment.</p>
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${data.invoiceUrl}" style="background-color: #1a1a1a; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">Review Invoice</a>
+      </p>
+      <p style="margin-top: 30px;">
+        Best regards,<br>
+        Renegade Race Rentals
+      </p>
+    </body>
+    </html>
+  `
+  const text = `
+New Invoice
+
+Hi ${data.recipientName},
+
+${data.senderName} sent you an invoice for ${data.title}.
+
+Amount: ${formatCurrency(data.amount / 100)}
+
+Review and pay: ${data.invoiceUrl}
+
+Best regards,
+Renegade Race Rentals
+  `.trim()
+
+  return { subject, html, text }
+}
+
+export function getCustomInvoicePaidEmailTemplate(data: {
+  recipientName: string
+  title: string
+  amount: number
+  invoiceUrl: string
+}): { subject: string; html: string; text: string } {
+  const subject = `Invoice Paid: ${data.title}`
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #28a745;">Invoice Paid</h1>
+      </div>
+      <p>Hi ${data.recipientName},</p>
+      <p>Payment for <strong>${data.title}</strong> has been received.</p>
+      <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Amount:</strong> ${formatCurrency(data.amount / 100)}</p>
+      </div>
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${data.invoiceUrl}" style="background-color: #1a1a1a; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Invoice</a>
+      </p>
+      <p style="margin-top: 30px;">
+        Best regards,<br>
+        Renegade Race Rentals
+      </p>
+    </body>
+    </html>
+  `
+  const text = `
+Invoice Paid
+
+Hi ${data.recipientName},
+
+Payment for ${data.title} has been received.
+
+Amount: ${formatCurrency(data.amount / 100)}
+
+View invoice: ${data.invoiceUrl}
+
+Best regards,
+Renegade Race Rentals
+  `.trim()
+
+  return { subject, html, text }
+}
+
+export function getDepositRefundedEmailTemplate(data: {
+  recipientName: string
+  title: string
+  amount: number
+  invoiceUrl: string
+}): { subject: string; html: string; text: string } {
+  const subject = `Damage Deposit Refunded: ${data.title}`
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: #28a745;">Damage Deposit Refunded</h1>
+      </div>
+      <p>Hi ${data.recipientName},</p>
+      <p>A damage deposit refund has been issued for <strong>${data.title}</strong>.</p>
+      <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>Refund Amount:</strong> ${formatCurrency(data.amount / 100)}</p>
+      </div>
+      <p style="text-align: center; margin: 30px 0;">
+        <a href="${data.invoiceUrl}" style="background-color: #1a1a1a; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">View Invoice</a>
+      </p>
+      <p style="margin-top: 30px;">
+        Best regards,<br>
+        Renegade Race Rentals
+      </p>
+    </body>
+    </html>
+  `
+  const text = `
+Damage Deposit Refunded
+
+Hi ${data.recipientName},
+
+A damage deposit refund has been issued for ${data.title}.
+
+Refund Amount: ${formatCurrency(data.amount / 100)}
+
+View invoice: ${data.invoiceUrl}
+
+Best regards,
+Renegade Race Rentals
+  `.trim()
+
+  return { subject, html, text }
+}
+
 // Helper function to convert email to test address if in test mode
 function getTestEmail(originalEmail: string): string {
   if (isTestMode()) {
@@ -1122,7 +1277,10 @@ export function getReturningUserInviteTemplate(name: string): {
   const siteUrl = process.env.WEB_URL || "https://renegaderace.com"
   // Handle bad names from migration (e.g. "null null", "null", empty)
   const displayName =
-    !name || name.trim() === "" || name.toLowerCase() === "null null" || name.toLowerCase() === "null"
+    !name ||
+    name.trim() === "" ||
+    name.toLowerCase() === "null null" ||
+    name.toLowerCase() === "null"
       ? "there"
       : name
   const subject = "The New Renegade Is Live - Come Check It Out"
