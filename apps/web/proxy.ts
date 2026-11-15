@@ -38,6 +38,17 @@ export default clerkMiddleware(
           "*.r2.cloudflarestorage.com",
           "*.r2.dev",
           "*.vercel.app",
+          // Local anonymous Convex (cloud-agent and `convex dev --local`).
+          ...(process.env.NODE_ENV === "development"
+            ? [
+                "http://127.0.0.1:3210",
+                "http://localhost:3210",
+                "ws://127.0.0.1:3210",
+                "ws://localhost:3210",
+                "http://127.0.0.1:3211",
+                "http://localhost:3211",
+              ]
+            : []),
         ],
         "img-src": [
           "*.r2.dev",
