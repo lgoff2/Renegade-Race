@@ -11,7 +11,8 @@
       "**/*.json",
       "**/*.jsonc",
       "**/*.css",
-      "!**/_generated"
+      "!**/_generated",
+      "!packages/backend/convex/tsconfig.json"
     ]
   },
   "formatter": {
